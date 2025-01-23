@@ -1,0 +1,363 @@
+Related Work
+In [9], one of the earlier papers presented on encrypted searching, the author observes that many individuals and organizations wish to exploit cloud storage, but do not trust cloud storage providers (CSP) with their confidential data.
+
+The naive solution is for clients to encrypt the document on their trusted local machines, and then upload it to the untrusted CSP. Subsequently, when clients need to access the documents, they may download it to their local machines and decrypt it for viewing. However, if clients are on devices with limited resources, this is not be reasonable solution. It becomes especially unreasonable as the volume of sensitive information expands (to gigabytes or more). Rather, what is needed is some way to allow the CSP to search on behalf of clients, returning only those documents that are relevant to the user’s query, but without disclosing the contents of the data nor the contents of the query1 to the CSP.
+
+The capability to search over an encrypted collection of documents without needing to first decrypt them is known as encrypted searching. It may be considered a subset of the more general (and far more computationally demanding) category of fully homomorphic encryption (FHE), which DARPA has recently spent $20 million dollars to support its development.
+
+Encrypted searching has gained a lot of traction in the research community because of its obvious utility. Many solutions have been proposed using diverse concepts and methods. This section describes the major existing related work and serves as a general overview of its current status, especially as it relates to the strengths and weaknesses of the various proposals.
+Confidentiality
+The first question to address is, how should confidentiality be implemented in the context of encrypted searching? That is, what techniques will be used to prevent the disclosure of information to unauthorized parties, e.g., a remote server hosting the encrypted documents? We consider three primary approaches: compression, obfuscation, and encryption. 
+MethodsAdvantagesDisadvantagesCompression
+[13] Will minimize document size 
+ Fast and easy to implement
+ Very well understood (Huffman) To serve as an obfuscator, separate symbol mapping table must be maintained locally by users. (So, why not just query the local index?)
+ Since you already have the symbol mapping, you can just query it locally, which can be treated as an index of the document. (Unless space efficiency is sacrificed.)
+ Relatively easy to break through frequency analysis; not secure.Obfuscation
+[17], [19] Effective non-skilled attackers
+ Compared to Huffman symbol codes, hash tables will be far smaller in size High risks from the insiders, who may have some clues to guess which obfuscated data means what.
+ Take time to perform searches the document contents for large documents.Encryption
+[1], [2], [4], [5], [6], [9], [11],  Effectively protects the contents of documents (or indexes) from their release of contents from anyone (including insiders, as long as insiders cannot access decryption keys) Depending on the confidentiality provided, performing approximate matching and ranking relevancy of documents is very difficult.
+ Strong encryption tends to be slow.
+ If note careful, still prone to information leaks, e.g., frequency analysis. See: information leaksCompression
+In [13], the idea of using the theoretically optimal symbol encoder, Huffman, is proposed in the context of information retrieval (without consideration of the unique needs of encrypted search), where the symbols consist of words rather than letters. Thus, each word in the document maps to a unique bit string such that the total length of the document is (near) optimally compressed. A compelling notion, to conceal the contents of documents, is to use this approach to generate code-words as a form of encryption (essentially, a substitution cipher). That means the symbol table must be kept private to prevent untrusted parties from learning the code-words.
+
+When combined with an inverted index2, this is fast and efficient; it only takes logN time to query whether a word is in a document, where N is the size of the vocabulary. It is also very space efficient, i.e., an optimal symbol compressor is being used to compress the document.
+
+Unfortunately, it has far more disadvantages than advantages. First, a local symbol table must be maintained and kept private. Second, since the symbol mapping must be kept private, it is reasonable to ask whether users should even bother querying the server at all when they can alternatively simply query the local private symbol table.
+
+If the symbol table is not being optimized per document, e.g., optimal code-words for the entire document collection are used instead, then only a single symbol table must be stored and maintained for all the documents in the collection, but at the cost of less than optimal compression. However, and this brings us to the third and primary disadvantage, the symbol table—being a substitution cipher—is easy to break through basic cryptanalysis. [Flaws of Substituion Ciphers Frequency List of English Alphabet]
+Obfuscation
+The compression section discussed a method to obfuscate by symbol remapping, or substitution. In general, any symbol substitution technique may be used to obfuscate the contents of documents. The main distinction between obfuscation and compression, in this context, is obfuscation obscures the contents of documents by mapping symbols, words, or phrases to other symbols, words or phrases [17, 19], whereas compression code-words map ASCII codes to binary codes.
+
+Conceptually, there are two types of obfuscations: encoding-based and index-based obfuscations. For example, encoding-based obfuscations transform the appearances of symbols, words, and phrases by applying a universal transformation for a document. Thus, the word “ABC” may be transformed to “BCD” by numerically adding one to the ASCII code of each character while their data type remains unchanged (their data type is still ASCII character string). Indexed-based transformations apply a unique transformation to the provided input. For example, the index may, as an invertible function, map “John Smith” to “Person 192353” (or simply “192353” if the “Person” tag leaks too much information). Another example can be found in automatically generating hash functions, e.g., map input x to x’ and store x’ in the index. As with compression, the symbol mapping must be kept hidden from untrusted parties
+
+These techniques suffer from the same problems that compression code-words suffer from: they are relatively easy to break or at the very least leak a lot of information about the contents.
+Encryption
+Well-tested encryption standards make more sense if the desired outcome is proven confidentiality.
+
+In data encryption parlance, the document (information) is called plaintext. The plaintext is fed into an encryption function whose output is called ciphertext. In addition, the function requires at least one more parameter called an encryption key. The idea behind the use of a key is instead of needing to generate a new algorithm to generate a different encryption, a different key can be used to the same effect. That is, a given plaintext must generate a different ciphertext (the encryption function must be invertible) for each key in the key address space.
+
+Without knowing the key, it ought to be the case that the only way to break the cipher is to do a brute force exploration over the entire key space, e.g., for a given ciphertext c, apply the encryption algorithm and a key to see if that generates a plausible plaintext c’. To prevent the tractability of brute force attacks, the key space tends to be quite large, e.g., 2128.
+Symmetric Encryption
+In the context of encrypted searching, two different types of encryption have been used, symmetric and asymmetric (public-key) encryption. Symmetric encryption uses a single key for both encryption and decryption. Compared to public key encryption, it is less computationally demanding. However, the downside is, a secure channel must be used to communicate the secret key if multiple parties need to be able to use it. The earliest examples of encrypted search used symmetric encryption [9].
+Public-key encryption (asymmetric)
+One of the earlier proposed encrypted searching proposals based on public-key encryption with keyword search overcomes a weakness in symmetric encrypted searching: to send a searchable encrypted document to Alice, you may use her public key such that only she can search it using her corresponding private key.
+Cryptographic One-Way Hash Functions
+In a secure offline index-based data structure (see offline searching), which is independent of the document it represents, there is no need (nor desire) to be able to losslessly reconstruct the document from the information in the index. This provides us with another attractive option: do not use encryption at all, but rather, use a one-way (non-invertible) cryptographic hash function. [7]
+They may still be combined with one or more secret keys, as with symmetric and asymmetric encryption, to manage user authorization.
+There are a couple of advantages to this approach. First and foremost, it is far less computationally demanding. Second, because it is non-invertible, even if the secret key (or keys) are revealed, this does not necessarily compromise the contents of the actual document (except by allowing whatever searching facilities the offline index permits).
+Types of information leaks
+In [7], the author contends that an encrypted search capability should reveal no information about the contents of the document unless a secret (called a trapdoor) is known which allows the secret-holder to search it is known. The only information that should be revealed through this search operation is whether a given encrypted document is relevant to a query. Thus, even if an untrusted party—like an untrusted cloud storage provider— captures an encrypted query (the trapdoor), it can neither determine the contents of the query nor the document, affording both data confidentiality and query privacy.
+
+While this is ideal, to enable encrypted searching in untrusted environments, there are many different, sometimes subtle, ways in which information can be disclosed—or “leaked”— to untrusted parties. This remains true even if we assume a strong, unbreakable encryption cipher is being used.
+Document (data) confidentiality
+Consider two distinct documents, A and B. If the same term (or word) in document A and document B has same representation (in the index), this constitutes an information leak. At this point, it is essentially a substitution cipher; in theory, not only do these leak information, but they can be broken through cryptanalysis.
+
+Indeed, even if the same term maps to the same representation in different parts of the same document, this also constitutes a substitution cipher. This is one of the reasons why Goh [7] argues that traditional hashes are not suitable for use as a secure index.
+Query privacy
+A similar argument to data confidentiality applies to query privacy. In the extreme case, queries may be sent in plaintext. This will be very informative to an untrusted party; over time they may be able to construct a model of an encrypted document by submitting many different plaintext queries to it and seeing if it is relevant or not relevant, e.g., does it contain these keywords in the case of a Boolean keyword query?
+
+A weaker variation of this is when a query for a specific keyword or term always looks the same when submitted to any document in the collection. In this case, through statistical inference, an untrusted party can slowly build up frequencies for patterns in the secure indexes. If they combine this with a bit of prior knowledge, like the frequency distribution of English words, they may be able to figure out what each pattern is most likely to represent (e.g., likelihood maximization using Naïve Bayes).
+
+A simple solution is to, for instance, insert a cryptographic hash of the term concatenated with a secret plus the document’s unique ID. In this way, the same query on different documents will look completely different. However, as elaborated on elsewhere, this imposes serious challenges to the efficiency of relevancy (context-aware) scoring.
+Access patterns
+To exacerbate matters, even if an encrypted search scheme provides robust data confidentiality and query privacy, implicit information useful for statistical inference may still be leaked. For example, if a private query consisting of some random sequence of bits is frequently followed by another action, like checking stock prices, this constitutes a correlation which, conceivably, may be used to infer properties about the query and the corresponding documents that are returned in response to it.
+
+To mitigate this more subtle form of information disclosure, Pinkas [Oblivious RAM Revisited] proposed the use of oblivious RAM constructs to conceal the history of data access patterns (observable by the server) associated with a user’s encrypted searching activities.
+
+Oblivious RAM may be thought of in the following way: to prevent meaningful statistical inferences from being made about a user’s activities, whenever an action—a read or write—is performed, randomly include other randomly chosen reads and writes (or queries) to obscure what the user was actually interested in. Unfortunately, the overhead cost of this may not yet be practical, but it is one of the only ways to prevent this subtler form of information leak.
+Primary goal of encrypted search schemes
+In light of these types of information leaks, the primary goal of encrypted searching is to prevent untrusted parties from inferring anything about the encrypted document beyond which documents are returned for a given encrypted query.
+
+Most encryption searching schemes [7][9][Public-key encryption with keyword search][Confidentiality-Preserving Rank-Ordered Search][…] claimed this to be their guiding principle, although only a few solutions, like that proposed by Pinkas [Oblivious RAM], considered maintaining this confidentiality standard when confronted with an untrusted party who considers the history of the user’s activities.
+Online and offline searching
+MethodsAdvantagesDisadvantagesOn-line
+[1], [5], [6], [9] Exact phrase matching is easy—does not blow up size like in other solutions.
+ Approximate matching (see section 3) is easier to implement, but it is still problematic given the fact that exact matches on encrypted bit strings must be performed Words and phrases may be guessed by observing the patterns of embedded index. It is extremely vulnerable to substitution cipher attacks; very weak data confidentiality guarantees
+ Sequential search; slow and impractical for large-scale useOff-line: Inverted index
+[2], [13] Extremely well-understood
+ Context-aware searches are easy to perform
+ Fast term lookups (logN)
+ Space-efficient (if Huffman compression)
+ Data structure facilitates efficient ranking operations (see section 3) Potentially vulnerable to substitution cipher attacks
+ Potentially vulnerable to preimage collision attacks
+ Leaks more information than Bloom filterOff-line: Bloom filter
+[7][Encrypted Keyword Searching in a Distributed Storage System] Fast term lookups (O(1))
+ Very space efficient (nearly optimal)
+ Can trade accuracy for space-complexity.
+ Rapid index construction
+ Data structure facilitates efficient ranking operations While it is O(1), this constant time complexity is hiding a large coefficient—k cryptographic hash functions must be evaluated, where k can become quite large.
+ Deleting a term from a document (a particular word does not appear in a document after the deletion) requires re-construction of Bloom filtersOffline: Minimum perfect hash
+[Network Applications of Bloom Filters: A Survey] Fast term lookups (O(1))
+ Extremely space efficient (nearly optimal)
+ Unlike Bloom filter, only two hash functions to evaluate.
+ Can trade accuracy for space-complexity
+ Data structure facilitates efficient ranking operations Leaks more information than Bloom filter indexes.
+ More complicated construction (and slightly slower, although linear in the number of the members still)Online searching
+On-line search performs a sequential search on the document cipher [1, 5, 6, 9, Public-key encryption with keyword search]. To be able to perform encrypted searches on such a cipher, a block cipher may not be used; rather, each term must be encrypted separately to facilitate exact string matches on the encrypted query terms. This is a simple substitution cipher; as mentioned elsewhere, these may be broken, or at the very least, they leak a significant amount of information.
+Moreover, as pointed out in [Confidentiality-Preserving Rank-Ordered], proposals based on online searching, in light of their sequential time complexity, are not appropriate except in limited contexts. For example, they may be appropriate if the purpose is to allow an email server to obliviously scan the “subject” field of incoming emails for the keyword “urgent” and, if detected, the recipient is immediately notified.
+While their disadvantages are many, they do have some advantages. Their primary advantage is related to their simplicity: one simply iterates through all of the terms and applies a cryptographic hash to each. To permit exact phrase searching, an encrypted query phrase need only be iteratively compared to the encrypted terms in the cipher. A comprehensive overview of online searching solutions can be found in [5].
+Offline (index) searching
+Offline indexes are data structures which store a representation of the document (or documents) in which rapid, efficient retrieval and ranking operations are facilitated. They also have the added benefit that, in many cases, they are completely isolated from the document they are representing, and thus both can be designed and implemented separately and independently.
+
+For example, they may use independent encryption and compression algorithms, appropriate to their specific needs. Furthermore, they can be independently distributed.
+
+In light of these clear advantages, most of the recently proposed encrypted searching constructions are based on offline indexes [2][7][Encrypted Keyword Search in a Distributed Storage System] like Bloom filters.
+
+A comprehensive overview of offline-based solutions can be found in [13].
+Inverted index
+In [Adding Compression to Block Addressing Inverted Indexes], a possible approach to a secure index is elaborated upon. Previously, we discussed this index in the context of using Huffman codes to serve as a substitution cipher. However, other, more secure solutions are possible.
+
+If terms, or words, are being stored in the inverted index, then this means an untrusted party may observe the contents of the document directly, and so no strong data confidentiality is provided. Moreover, even if encrypted, compressed or obfuscated transformations of terms are being stored in the index, it is still potentially vulnerable to cryptanalysis (e.g., frequency estimates may be estimated. Alternatively, you could try various words to try to do a preimage collision attack on the values in the index. However, if multiple values may map to the same value in the index, this does complicate frequency analysis – at the expense of permitting false positives.
+
+The primary advantage of the inverted index is that it is extremely well-understood (it is the most popular index in the field of information retrieval at large), fast, and space-efficient (especially if a block-level or document-level postings list is used).
+Bloom Filter (Signature File)
+A Bloom filter [?][?] is a probabilistic (approximate) set which can trade accuracy for space complexity. It consists of a bit vector of size m, all initially set to 0, and k (traditionally cryptographic and independent) hash functions. For each member, use the k cryptographic hash functions to map it to k (or fewer, since collisions are possible) positions in the bit vector, setting each of those bits to 1. To check if an element is a member of the set, check to see if each of its k hashes positions are set to 1. If any are still 0, then it is definitely not a member (no false negatives). However, if all of them are set to 1, we may assume that it is a member. However, it is possible, with some probability, that it is not a member; rather, one or more actual members caused those k bit positions to be set to 1. Thus, Bloom filters allow for a tunable false positive rate.
+
+It is fairly straight-forward to construct a secure searchable index from a Bloom filter. For each term (words, or n-grams, or other constructions) in the document, insert it into the filter. To prevent unauthorized users from querying the index, do not insert the plaintext terms; rather, insert some transformation of them. Ideally, use a one-way hash function, or a cryptographic hash function, on the term concatenated with a secret, e.g., insert(bloom, hash(terma | secret)). To further harden the Bloom filter from cryptanalysis, e.g., to guard against information leaks possible through correlation analysis, the same terms in separate documents ought to map to different index positions in the Bloom filter. In [7], it is recommended that the document id be appended to the ciphertext terms of the document during the construction of the secure index. For example, insert(bloom, hash2(hash1(terma | secret) | doc_id). Likewise, during the construction of encrypted (hidden) queries, apply the same transformations. Since secret is unknown to untrusted parties, like the server, they are unable to query the secure index, and since the doc_id is different for each document, term regularities never materialize.
+
+The primary advantage of the Bloom filter, in the context of encrypted searching, is that it leaks very little information. In a Bloom filter, not only is it possible for more than one term to map to the same positions, but mappings for different terms overlap and thus one cannot know if a pattern of ones is from a combination of n terms or a single term. This is why, according to [7], the Bloom filter is such a strong choice. Additionally, the Bloom filter is also space efficient, since we may freely trade accuracy (false positives) for space-complexity (number of bit positions in the filter).
+
+Bloom filters have two notable weaknesses. First, Bloom filters do not identify the position (which is both a blessing and a curse in the context of encrypted search) of the terms (of the encrypted document) inserted into the set; this complicates approximate matching and context-aware searching, which we will elaborate on in the section “How do we map queries to documents.” Second, Bloom filters (with the exception of Bloom filter variations, like Counting Bloom [An Improved Construction for Counting Bloom Filters]) do not allow removal of members from the set, thus necessitating the Bloom filter’s reconstruction whenever removal is required.
+Perfect Hash + Cryptographic Hash
+As promising as the Bloom filter is, it is not as space efficient as a minimum perfect hash, which may also be used to trade accuracy for space-complexity, but it does so in a theoretically optimal way. In addition, the minimum perfect hash construction also allows for the evaluation of only two hash functions instead of k, thus it has a time complexity advantage over Bloom filters which may need to evaluate ten or more hash functions.
+
+The primary disadvantage, in the context of encrypted searching, is that it may leak, for a given false positive rate, more information than the Bloom filter index since none of the members collide with each other in a minimum perfect hash—that is why it is called a perfect hash. In addition, the time to construct a minimum perfect hash is potentially slower (although it is still linear in the size of the members) than with the Bloom filter.
+
+As a demonstration, here is a possible approach to making a minimum perfect hash allow for false positives [Network Applications of Bloom Filters: A Survey]:
+
+ membership_vector[perfect_hash(x)] = crypto_hash(x)
+ To check if an x’ is a member, see if membership_vector[perfect_hash(x’)] equals crypto_hash(x’).
+ If x’ is really not a member, then it will test positively as a member with probability 0.5number_of_bits_output_by_cryptographic_hash.
+
+It should be noted that, while in theory the perfect hash is optimal with respect to bits per member for a given false positive rate, implementations in practice do not achieve this limit. In practice, the space-complexity savings over the Bloom filter is less significant, although the time complexity is a big selling point.
+How do we map queries to documents?
+The question of how to effectively map queries to documents is a very important, often neglected topic, in the Encrypted searching community. There are two primary ways being explored in the encrypted searching community: Boolean keyword matching and context-aware (degrees of relevancy) searching.
+MethodsAdvantagesDisadvantagesBoolean keyword search (n-gram search)
+[1], [6], [9], [20], [21], [22], [23], [24], [25] Simple
+ Can easily be extended to complex searches, e.g., a disjunction of terms.
+ Can be extended to support fuzzy set membership queries more easily than relevancy scoring.
+ May return unrelated search results due to lack of quantifying relevance to given query
+
+ If using online method, it will result in high run-time overhead for large documents and/or large collections.Context-aware search
+[10], [12], [18], [26], [27], [29] Much better precision and recall on results
+ Draws from extensive research in the IR community
+ Run-time search overhead, but can be managed.
+
+ Searches using secure indexes are more complicatedBoolean keyword matching
+Boolean keyword searches [Public-key encryption with keyword search, Practical Techniques for Searches on Encrypted Data] look for a particular words (or more generally, terms). Although the number of words being looked for varies from 1 to a particular number, what is common in this approach is that they perform a Boolean test regarding whether the given set of words appear in a document. This type of search does not keep track of anything other than the Boolean test – either all of the words matched, or none of them did. And while there are some techniques that are tolerant to “deviations”—like typographical errors—encrypted search must still rely on some form of exact string matching due to both the terms in the query and the document being encrypted. For example, the solution proposed by Li [6] addresses tolerance of typographical errors by including all error patterns up to k errors directly in the index, upon which simple exact matching may be performed.
+Extensions
+Conjuctive keyword search
+In [1], they propose a system which permits secure conjunctive queries for certain keywords (trapdoors) on a given set of fields, like the “From” field in an email. By secure, they mean that given access to a set of indexes for encrypted documents and a freely chosen set of trapdoors, adversaries—like an untrusted cloud storage provider—must not be able to learn anything about the encrypted documents except whether it matches those specific trapdoors.
+
+Their work demonstrates an improvement over the single keyword searching discussed in [9], but their solution is still rather limited. They still only perform exact string matching (instead of approximate string matching), their solution inflexibly requires the document creator to tag specific keyword fields for search-ability—in their case, these field names (although not the actual values) are exposed, which constitutes an information leak—and finally they do not even consider untrusted parties which consider historical data (previous queries and matching results).
+Approximate keyword matching
+In [Efficient Fuzzy Search in Large Text Collections], the authors point out that, for Google, not returning enough results is not a problem. Their primary problem is finding ways to return fewer, more relevant results so that users do not have to sift through too many results (most users only check the first page of results from Google). Thus, Google is motivated to improve the precision, which is the ratio of relevant documents returned to the total documents returned. However, in vertical search--such as encrypted searching over an enterprise's store of encrypted documents--there is far more concern over not missing or overlooking relevant documents, since there may be so few relevant results to begin with. Thus, vertical search tends to have an objective in direct contrast with Google’s. That is, recall, which is the ratio of relevant documents return to total number of relevant documents, is equally or even important to than precision.
+
+Elsewhere, we discuss relevancy scoring, which provides a more sophisticated approach in that the goal is to rank documents according to how relevant they are to a query as opposed to the simple Boolean "relevant" or "irrelevant" score found in Boolean keyword searching. But, a simple extension to Boolean keyword searching which improves the recall (at the expense of precision) is to do more tolerant matching on the keywords.
+Locality-sensitive hashing
+In locality sensitive hashing [Distance-Sensitive Bloom Filters], the notion is to map similar (according to some distance measure) items to the same hash. This is an especially good fit in the context of encrypted searching, since in encrypted searching, only exact matches (on the encrypted bit strings) is possible.
+
+To avoid the curse of dimensionality—or in other cases avoid having to explore a space that combinatorially explodes—in [Approximate Nearest Neighbors: Towards Removing the Cuse of Dimensionality], locality-sensitive hash functions for dimensionality reduction; that is, use hash functions in which the probability of a collision is high for “close” elements and low otherwise. (Distance preserving.) Thus, LSH functions are not at all like cryptographic hash functions; cryptographic hashes, like most hash functions, are designed to minimize the probability of collisions, but in general LSH hashes are designed to maximize collisions in some sense.
+
+For instance, in [Locality-Sensitive Bloom Filter for Approximate Membership Query], the authors observe that Bloom filters generally assume cryptographic hash functions, or at least hash functions which uniformly distribute over the domain (bit positions). However, what if this requirement is relaxed? Then, a choice of hash functions can be made which are more likely to test positively for non-members that look like members by using locality-sensitive hash functions. Unfortunately, this will cause more information leakage; for minimizing information leakage, the hash functions should uniformly distribute over the entire domain.
+Stemming
+Stemming may be thought of as another especially relevant form of locality sensitive-hashing. In stemming, morphological variations of a word are mapped to a single base form. By reducing such variations to a single form, in which the different variations have the same essential meaning, recall and precision can hopefully both be improved.
+
+For example, if a user searches for “computing grades”, it would seem the user would find “computed grade” relevant also. By not including this variation in the result set, the recall and potentially the precision are reduced: the recall is reduced because not all of the relevant documents are returned, and the precision is potentially reduced because a less relevant document may be returned in its place. Stemming has demonstrated itself to be a fast and fairly effective technique to improve precision and recall. [Viewing Morphology as an Inference Process]
+Phonetic algorithms
+Phonetic algorithms are another form of locality sensitive hashing. The notion is to map words that sound alike to the same hash. Soundex is one of the more popular examples of this; it is an especially useful trick for approximate matches on the names of people.
+Edit distance
+In [Fuzzy Keyword Search Over Encrypted Data In Cloud Computing
+], a mechanism is proposed to address the limitation in which only exact matches on keywords are allowed. In particular, they propose a construction which allows for matches on typographical errors or spelling variations, e.g., “color” vs “colour”.
+
+To accomplish this, when constructing the secure index, for each term in the document, add all k-edit error patterns, where an error is an insertion, deletion, or substitution of a character. For example, for a 1-edit error tolerance, the keyword “age” is expanded to {age, *age, a*ge, ag*e, age*, *ge, a*e, ag*}, where the * represents any character. Thus, if “age” fails to match, the query can be automatically expanded to each of those variations in turn until a match is found.
+Wildcard matching
+Wildcard searches can be quite useful. For example, if users are unclear on how to spell a particular word, they can use wildcards to represent their ignorance, e.g., instead of “tomorrow”, they may type “to*row”. Or, as another example, the user may seek multiple variations of a word, e.g., “*night” for “night” or “knight”.
+
+The solution proposed in [Fuzzy Keyword Search Over Encrypted Data In Cloud Computing] can be readily repurposed to implement wildcard searching.
+Exact phrase matching (word n-grams)
+Most searchable encryption schemes only allow matches on keywords, but in [Phrase Search over Encrypted Data with Symmetric Encryption Scheme], a method for secure exact phrase matching is elaborated on. Phrase searches consist of approximately 10% of web search queries, so this is an important capability. Unfortunately, they require clients maintain a local dictionary on their computers to facilitate the capability. As long as such data must be maintained locally to perform searches, one may reasonably argue that local searchable indexes should be maintained instead. Local indexes, freed from many of the security concerns, would permit any sort of search operation without the need to communicate with server until a specific document is desired (thus less information leaks in the form of access patterns)
+
+Biword model
+The notion is, to accomplish exact phrase queries, as long as the index supports 2-grams, any n-gram exact phrase search can be expanded to a sequence of 2-grams. For example, to find the exact phrase, “hello dr fujinoki” can be represented as the Boolean keyword query, “hello dr”, “dr fujinoki”. Do note, however, that this opens up the possibility for false positives, as this expanded query will also match any document in which “hello dr” and “dr fujinoki” are present—they do not have to be adjacent to each other.
+
+Simple extensions can exploit k-gram members, like 3-grams, to reduce the probability of a false positive. The biword model would work well with secure indexes, like the Bloom filter or minimum hash constructions.
+Relevancy (context-aware)
+As pointed out in [Confidentiality-Preserving Rank-Ordered Search], most encrypted searching research focuses on Boolean search, where a document is relevant to a query if and only if all of the terms in the query match. As indicated elsewhere, this has a number of problems with respect to precision and recall. The results in this paper represent an important advance over prior encrypted searching schemes in that it ranks documents (out of a set of documents) according to estimated relevance to a query.
+
+In modern IR systems, scoring the relevancy of a document to a query is, arguably, its most important task. If standard relevancy scoring techniques in IR can be brought to bear on encrypted searching, the utility of encrypted search will be significantly improved.
+
+However, encrypted searching poses a number of challenges to standard relevancy metrics in IR. In encrypted search, a server obliviously searches over a collection of encrypted documents; however, the confidentiality guarantees (query privacy and data confidentiality) complicate most of the traditional relevancy scoring techniques found in the IR literature, like tf-idf, unless query confidentiality requirements are relaxed.
+
+For instance, if a particular term maps to a different bit string in each document (to minimize information leakage as explained elsewhere), and no information may be leaked to the server about the query terms, then the user would need to submit a separate query for each document, which would be quite costly.
+
+On the other hand, if this requirement is relaxed, much more can be done. In particular, if query terms to always map to the same bit string representation, as seen by the server, for every document, then the CSP itself can receive a single query from the user and take it from there.
+Types
+Weighted keywords
+Weighted keywords is based on two fundamental insights. First, some of the terms occur more frequently in a document than other terms. So, when scoring the relevancy of a document, if a frequent term in the document matches a term in the query, it should be given more weight than a less frequent but matching term. Mathematically:
+
+term_weight_in_document(t,d)=some function on the frequency of term t in d
+
+The second insight is that many words (or terms) will be in all, or most, of the documents in the collection. These words, therefore, carry very little meaning; they have no discriminatory power as they appear in nearly every document. Conversely, many words will be very rare or even unique in a collection, and thus they have significant discriminatory power. For example, the word “the” is in nearly every document—it serves as linguistic glue— but the word “acatalepsy” will be found in very few, if any. The heuristic, then, is the more discriminatory power a term has, the more weight it should be given when scoring a document’s relevancy. Mathematically:
+term_weight_in_collection(t,D)=f(?D?/?{t?d,d?D}? )
+
+Combining these two insights, we have tf-idf (term frequency, inverse document frequency) and its variants.
+
+A secure index, like a Bloom filter, can easily be adapted to work with these metrics [Spectral Bloom Filters, Space-Code Bloom Filter for Efficient Per-Flow Traffic Measurement].
+Term Proximity
+In [Efficient Text Proximity Search], the importance of proximity of terms in keyword searches is considered. The fundamental principle can be demonstrated by considering the following: given two documents, document1 = "A B C" and document2 = "A D D ...  D B C", document1 should be more relevant than document2 for the query "A B" even though they both contain the keywords with the same frequency. Put simply, how close together are the terms? The closer, all things else being equal, the better the match.
+
+There are two primary approaches to account for this. The first way is to implicitly model term proximity by represent the documents at finer granularities, e.g., every sequence of N sentences gets a different index. Thus, the size of N can be tuned to provide a desired level of precision and recall: the larger the N, the better the recall but the worse the precision and, likewise, the smaller the N the better the precision but the worse the recall. The second way is to explicitly introduce a proximity measure, e.g., assign larger relevancy scores to matches in which the terms are “closer”. While both approaches tend to involve rather informal, ad hoc decisions, it is necessary to make them to create an effective IR system.
+Semantic search
+In [Concept Search: Semantics Enabled Information Retrieval], the authors make it clear that every previous search technique—from simple Boolean keyword searching to tf-idf proximity weighted relevancy scoring—are variations of syntactic search in which some form of string matching, combined with various ways to judge how important particular string matches, is being performed.
+ 
+There are two major problems with this string matching approach. First, different words (or phrases) may be used to express similar meanings (depending on the context). This is referred to as synonymy. And, second, the same word (or phrase) may be used to express different meanings (depending on the context). This is referred to as polysemy. Both of these problems harm the relevancy of results.
+
+Semantic search takes a different approach. Instead, it asks, what is the meaning of the text, and does the query in some way correspond to that meaning? This is a more complicated question. It may, for instance, involve natural language processing to perform word-sense disambiguation, part of speech tagging, and named entity recognition. When combining this with ontological and semantic knowledge, the IR system may begin to process queries in a way that resembles a human's ability to understand text.
+
+For instance, if a user asks for "carnivore hunting prey", one may assume he is also interested in more specific concepts, like "dog chasing cats" or "lions hunting antelopes". Using part of speech tagging, it can be determined that "carnivore" is the subject, "hunting" is the verb, and "prey" is the object. Using word-sense disambiguation, the word senses can be determined fairly accurately, e.g., "carnivore" maps to "carnivore-1" (word sense 1). Using an ontology (like Wordnet), it can be determined that "carnivore-1" is a concept which includes (more specific concepts) like "dog-1", "lion-2", etc. Then, it may be assumed we can expand the subject, "carnivore-1", to {"carnivore-1", "dog-1", "lion-2", ...}, the verb, "hunting-3", to {"hunting-3", "chasing-1", "preying-4", ...}, and the object "prey-4" to {"prey-4", "feline-2", "antelope-1", "cat-1", ...}. Clearly, this is not an easy problem, but this approach can already, in limited ways, be put to effective use.
+
+There are also statistical techniques to model semantically related terms, like latent semantic indexing (LSI). Unfortunately, there has been very little progress on either of these fronts in relation to encrypted searching. They represent promising future directions.
+Multi-user encrypted searching
+In [Veri?able Symmetric Searchable Encryption for Multiple Groups of Users], the authors observe that most encrypted search implementations assume only one person will be able to perform the searches; or, if multiple people, then they all must share the same secret, and that secret will allow them to query the secure index. However, what if one wishes to be able to revoke the ability for a user to query the secure index?  Take this example:
+
+ User 1 makes secure index for document using secret
+ User 2 is trusted to query secure index by sharing with him the secret
+ User 1 no longer wants user 2 to be able to query the secure index
+
+How can this be accomplished? One solution is to simply use two secrets, and only give User 2 one of the secrets. Example:
+
+ User 1 makes secure index for document using secret1 and secret2
+ User 2 is trusted to query secure index, partly, by sharing with him secret1
+ User 1 gives a server secret2
+ User 2 may submit encrypted queries to server on secure index
+ Server cannot determine contents of encrypted query, nor contents of secure index, except which documents are ranked as relevant to the encrypted query
+ User 2 still needs the server because both secret1 and secret2  must be used to query secure index
+ User 1 no longer wants user 2 to be able to query the secure index. He informs server not to honor his query requests
+ Even if User 2 has a local copy of secure index, he cannot query it since he does not know secret2 and he can’t ask the server to query it on his behalf since the server has been instructed to de-authorize him.
+ 
+In pseudo code, a term is hashed into the secure index like so (or something more elaborate):
+
+      hash2(hash1(termplain text | secret1), secret2)
+
+Thus, to check the secure index for termplain text, both secret1 and secret2 must be known.
+
+This is the essential idea behind multi-user systems and proxy encryption. Note that these models generally assume the server (who is trusted with one of the required secrets) and the partially trusted users do not collude. If server agrees to continue servicing requests of deauthorized users or if server gives the users secret2, then they will be able to continue querying the secure index.
+
+******************************************************************
+Block-based search
+
+Block-based search: [13]
+
+Individual paper summaries:
+
+[1]
+
+[2]
+
+Dong proposed a security scheme to protect privacy of data stored in remote outsourced storage servers, such as storage service providers [4].  The main concept of the new schema is that authorized users are able to perform searches on the encrypted data in a remote storage server, while the encryption is applied in the client side, instead of the server side, to protect the privacy of the data from the insiders of the storage service providers.  The proposed security schema assumes that each authorized user possess the encryption and the decryption key.  The proposed search method is essentially an n-gram search, which tags a secret unique identifier, called “trapdoor” to each searchable word in a document, in such a way that a group of authorized users can generate each identifier.  The core of Dong’s solution is key generation.
+
+[5]
+
+Li’s solution [6] enumerates possible mutations of each word in a document in the text of a document.  Although the on-line based method has a few advantages, such as no “off-line” data structure and no need for complex search algorithm as well as accurate n-gram search and context-aware searches as a result, it has some major disadvantages.  For example, because each target word and its mutations must be listed in the text, block-cypher method cannot be used, making word-cypher the option for encryption.  Word-cypher may expose some clues for attackers to guess what each encrypted word is.  The considerable inflation of the document size is another weakness.
+
+[7]
+
+Song’s solution [9] is another on-line based solution.  The contents of each e-mail message are encrypted for each word in the message and the encrypted words are stored in each encrypted e-mail.  Song proposed techniques to perform searches for encrypted e-mail messages.  Song’s solution requires each word in e-mail messages to be encrypted before e-mail messages are stored in a remote e-mail server.  Searches are performed by matching encrypted words.  Song’s solution assumes a random number for each encrypted word.  Although Song’s solution is practical especially for a small number of short for e-mail messages, the solution will not be practical for documents that consist of a large number of words or for a large number of e-mail messages, since such situations require a large number of random numbers to be managed by the user side.  Another limitation of the solution is that the proposed technique does not allow context-aware searches.
+
+[10]
+
+[11]
+
+Giunchiglia proposed a search method, which is a hybrid of n-gram and context-aware search [12].  The solution’s main premise is a bridge between n-gram searches (which Giunchiglia called “syntactic searches”) and context-aware searches (called “semantic searches” by Giunchiglia), by putting multiple context-aware search method on top of an n-gram search mechanism.  After n-gram searches discover locations of multiple search keys, the results from n-gram searches are pumped up to a context-aware search method.  The claimed advantage of the new hybrid search method is scalability between pure n-gram search and multiple context-aware search methods, providing flexibility in accuracy for context-aware searches by selecting an appropriate existing context-aware search method.
+
+[13]
+
+[17]
+
+[18]
+
+[19]
+
+[20]
+
+[22]
+
+[24]
+
+[25]
+
+[29]
+
+References
+
+[1]	Philippe Golle, Jessica Staddon, and Brent Waters, “Secure Conjunctive Keyword Search over Encrypted Data,” Applied Cryptography and Network Security, Lecture Notes in Computer Science, vol. 3089, pp. 31-45, 2004.
+[2]	Zhao Wei, Zhao Dan-Feng, Gao Feng, and Liu Guo-Hua, “On Indexing and Information Disclosure Measure for Efficient Cryptograph Query,” Proceedings of the World Scientific and Engineering Academy and Society International Conference on Computers, pp. 476-480, 2009.
+[3]	Qin Liu, Guojun Wang, and Jie Wub, “Secure and Privacy Preserving Keyword Searching for Cloud Storage Services,” Journal of Network and Computer Applications, vol. 35, no. 3, pp. 927-933, May, 2012.
+[4]	Changyu Dong, Giovanni Russello, and Naranker Dulay, “Shared and Searchable Encrypted Data for Untrusted Servers,” Data and Applications Security XXII, Lecture Notes in Computer Science, vol. 5094, pp. 127-143, 2008.
+[5]	Muhammad Rizwan Asghar, Giovanni Russello, Bruno Crispo, and Mihaela Ion, “Supporting Complex Queries and Access Policies for Multi-User Encrypted Databases,“ Proceedings of the ACM Workshop on Cloud Computing Security Workshop, pp. 77-88, 2013.
+[6]	Jin Li, Qian Wang, Cong Wang, Ning Cao, Kui Ren, and Wenjing Lou, “Fuzzy Keyword Search over Encrypted Data in Cloud Computing,” Proceedings of IEEE INFOCOM, pp. x-x, 2010.
+[7]	Eu-Jin Goh, “Secure Indexes,” Trust, Privacy, and Security in Digital Business, Lecture Notes in Computer Science, vol. 3592, pp. 128-140, 2005.
+[8]	Qin Liu, Guojun Wang, and Jie Wu, “An Efficient Privacy Preserving Keyword Search Scheme in Cloud Computing,” Proceedings of International Conference on Computational Science and Engineering, vol. 2, pp. 715-720, August, 2009.
+[9]	Dawn Xiaodong Song, David Wagner, and Adrian Perrig, “Practical Techniques for Searches on Encrypted Data,” Proceedings of the 2000 IEEE Symposium on Security and Privacy, pp. 44-55, 2000.
+[10]	Huanhuan Cao, Daxin Jiang, Jian Pei, Enhong Chen, and Hang Li, “Towards Context-Aware Search by Learning a Very Large Variable Length Hidden Markov Model from Search Logs,” Proceedings of the International Conference on World Wide Web, pp. 191-200, 2009.
+[11]	Hannah Bast and Marjan Celikik, “Efficient Fuzzy Search in Large Text Collections,” ACM Transactions on Information Systems, vol. 31, no. 2, pp. 1-59, May 2013.
+[12]	Fausto Giunchiglia, Uladzimir Kharkevich, and Ilya Zaihrayeu, “Concept Search: Semantics Enabled Syntactic Search,” Proceedings of CEUR Workshop, pp. x-x, 2008.
+[13]	Gonzalo Navarro, Edleno Silva de Moura, Marden Neubert, Nivio Ziviani, and Ricardo Baeza-Yates, “Adding Compression to Block Addressing Inverted Indexes,” Information Retrieval, vol. 3, no. 1, pp. 49–77, July 2000.
+********************************************
+[14]	Siani Pearson, Yun Shen, Miranda Mowbray, “A Privacy Manager for Cloud Computing,” Cloud Computing, Lecture Notes in Computer Science, vol. 5931, pp 90-106, 2009.
+[15]	Yanbin Lu, Gene Tsudik, “Enhancing Data Privacy in the Cloud,” Trust Management V, IFIP Advances in Information and Communication Technology, vol. 358, pp 117-132, 2011.
+[16]	Rabia Latif, Haider Abbas, Saïd Assar, Qasim Ali,“ Cloud Computing Risk Assessment: A Systematic Literature Review,” Future Information Technology, Lecture Notes in Electrical Engineering, vol. 276, pp 285-295, 2014.
+[17]	Miranda Mowbray, Siani Pearson, and Yun Shen, “Enhancing Privacy in Cloud Computing via Policy-Based Obfuscation,” Journal of Supercomputing, vol. 61, pp. 267–291, 2012.
+[18]	Ricardo A. Baeza-Yates, “Text Retrieval: Theory and Practice,” 
+[19]	Christian Collberg, Clark Thomborson, and Douglas Low, “A Taxonomy of Obfuscating Transformations,” 1997.
+[20]	Y. C. Chang and _____, “Privacy Preserving Keyword Searches on Remote Encrypted Data,” Lecture Notes in Computer Science, vol. 3531, pp. 442-455, 2005.
+[21]	Hakan Hacigümü?, Bala Iyer, Chen Li, and Sharad Mehrotra, “Executing SQL over Encrypted Data in the Database-Service-Provider Model,“ Proceedings of the ACM SIGMOD International Conference on Management of Data, pp. 216-227, 2002.
+[22]	Christoph Bösch, Richard Brinkman, Pieter Hartel, Willem Jonker, “Conjunctive Wildcard Search over Encrypted Data,” Proceedings of the VLDB International Conference on Secure Data Management, pp. 114-127, 2011.
+[23]	Benwen Zhu, Bo Zhu, and Kui Ren, “PEKSrand: Providing Predicate Privacy in Public-Key Encryption with Keyword Search,” Proceedings of IEEE International Conference on Communications, pp. 1-6, 2011.
+[24]	Reza Curtmola, Juan Garay, Seny Kamara, and Rafail Ostrovsky, “Searchable Symmetric Encryption: Improved Definitions and Efficient Constructions,” Proceedings of the ACM Conference on Computer and Communications Security, pp. 79-88, 2006.
+[25]	N. Cao, C. Wang, M. Li, K. Ren, and W. Lou, “Privacy-Preserving Multi-keyword Ranked Search over Encrypted Cloud Data,” in Proceedings of IEEE INFOCOM, pp. x-x, Apr. 2011.
+[26]	Huanhuan Cao, Derek Hao Hu, Dou Shen, Daxin Jiang, Jian-Tao Sun, Enhong Chen, and Qiang Yang, “Context-Aware Query Classification,” Proceedings of the International ACM SIGIR Conference on Research and Development in Information Retrieval, pp. 3-10, 2009.
+[27]	Biao Xiang,  Daxin Jiang, Jian Pei, Xiaohui Sun, Enhong Chen, and Hang Li, “Context-Aware Ranking in Web Search,” Proceeding of the International ACM SIGIR Conference on Research and Development in Information Retrieval, pp. 451-458, 2010.
+[28]	Andrei Broder and Michael Mitzenmacher, “Network Applications of Bloom Filters: A Survey,” Internet Mathematics, vol. 1, no. 4, 2002, 485-509.
+[29]	Yelong Shen, Jun Yan, Shuicheng, Lei Ji, Ning Liu, Zheng Chen, “Sparse Hidden-Dynamics Conditional Random Fields for User Intent Understanding,” Proceedings of the International Conference on World Wide Web, pp. 7-16, 2011.
+[30]	
+
+[Z]	Jidong Chen, Hang Guo, Wentao Wu, and Wei Wang, “iMecho: a Context-Aware Desktop Search System,” Proceedings of the International ACM SIGIR conference on Research and development in Information Retrieval, pp. 1269-1270, 2011.
+
+
+
+
+[?]	A. Swaminathan, Y. Mao, G.-M. Su, H. Gou, A. Varna, S. He, M. Wu, and D. Oard, ““Con?dentiality-Preserving Rank-Ordered Search”
+[?]	D. Boneh, G. D. Crescenzo, R. Ostrovsky, and G. Persiano. “Public-key encryption with keyword search.” In C. Cachin, editor, Proceedings of Eurocrypt 2004, LNCS. Springer-Verlag, May 2004.
+[?]	Ralf, Andreas, Seungwon, Martin, and Gerhard, “Efficient Text Proximity Search”.
+[?]	Yinqi Tang, Dawu Gu, Ning Ding, and Hiaining Lu, “Phrase Search over Encrypted Data with Symmetric Encryption Scheme”.
+[?]	Michael Mitzenmacher and Adam Kirsch, “Less hashing, Same Performance: Building A Better Bloom Filter”.
+[?]	Michael Mitzenmacher, “Compressed Bloom Filters”.
+[?]	Specitral Bloom Filters
+[?]	Oblivious RAM Revisited
+[?]	Efficient Text Proximity Search
+[?]	Verifiable Symmetric Searchable Encryption for Multiple Groups of Users
+[?]	Network Applications of Bloom Filters: A Survey
+[?]	Distance-Sensitive Bloom Filters
+[?]	Extremely Fast Text Feature Extraction for Classification and Indexing
+[?]	Locality-Sensitive Bloom Filter for Approximate Membership Query
+[?]	Space-Code Bloom Filter for Efficient Per-Flow Traffic Measurement
+[?]	Public-key encryption with keyword search
+[?]	Building A Better Bloom Filter
+[?]	Phrase Search over Encrypted Data with Symmetric Encryption Scheme
+[?]	Approximate Nearest Neighbors: Towards Removing the Curse of Dimensionality
+
+
+1 See the section on information leaks for seeing what kinds of information may be disclosed.
+2 See section 3.1.1 on Inverted Indexes
+---------------
+
+------------------------------------------------------------
+
+---------------
+
+------------------------------------------------------------
+

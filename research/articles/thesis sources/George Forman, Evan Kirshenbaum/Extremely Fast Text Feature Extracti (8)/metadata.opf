@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='utf-8'?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+        <dc:identifier opf:scheme="calibre" id="calibre_id">8</dc:identifier>
+        <dc:identifier opf:scheme="uuid" id="uuid_id">550d87c3-5687-456c-9b64-664a095801b3</dc:identifier>
+        <dc:title>Extremely Fast Text Feature Extraction for Classification and Indexing</dc:title>
+        <dc:creator opf:file-as="George Forman, Evan Kirshenbaum" opf:role="aut">George Forman, Evan Kirshenbaum</dc:creator>
+        <dc:contributor opf:file-as="calibre" opf:role="bkp">calibre (1.24.0) [http://calibre-ebook.com]</dc:contributor>
+        <dc:date>0101-01-01T00:00:00+00:00</dc:date>
+        <dc:language>en</dc:language>
+        <dc:subject>Most research in speeding up text mining involves algorithmic improvements to induction algorithms</dc:subject>
+        <dc:subject>and yet for many large scale applications</dc:subject>
+        <dc:subject>such as</dc:subject>
+        <dc:subject>text mining</dc:subject>
+        <dc:subject>text indexing</dc:subject>
+        <dc:subject>bag-of-words</dc:subject>
+        <dc:subject>feature engineering</dc:subject>
+        <dc:subject>feature extraction</dc:subject>
+        <dc:subject>document categorization</dc:subject>
+        <dc:subject>text tokenization</dc:subject>
+        <meta content="{&quot;George Forman, Evan Kirshenbaum&quot;: &quot;&quot;}" name="calibre:author_link_map"/>
+        <meta content="2014-02-23T00:42:23.236000+00:00" name="calibre:timestamp"/>
+        <meta content="Extremely Fast Text Feature Extraction for Classification and Indexing" name="calibre:title_sort"/>
+    </metadata>
+    <guide>
+        <reference href="cover.jpg" title="Cover" type="cover"/>
+    </guide>
+</package>

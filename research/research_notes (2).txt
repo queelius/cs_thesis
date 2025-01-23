@@ -1,0 +1,758 @@
+Hello, I'm looking forward to seeing you Friday.
+
+I've been working hard on ideas/approaches for the problem. And, here is how I
+define the problem:
+
+(1) Basic components are n-grams. To allow for better approximate matches for a
+search query (which is a k-gram, e.g., "hello" is a 1-gram search query, and
+"hello world" is a 2-gram search query -- we call such queries k-queries), the
+bloomified message can exactly match search queries up to k-grams.
+
+So, for an n-query, we try to find an optimal partition of the query terms such
+that the largest partition is <= k and the smallest is >= 1. An optimal
+partition is one whose distance measure from the message M is at a minimum.
+
+For k > c, where c is reasonable small, finding an optimal match is probably not
+tractable. The number of partitions is a bell number, where an n-query's
+tightest bound found yet is ((0.792*n)/(ln(n+1)))^n,n=10, which asymptotically
+grows faster than the exponential function If n = 10, ways to partition =
+154508. And, moreover, it will be hard (if not impossible) looking at nodes
+that have already been visited. And, furthermore, we will be trying,
+optionally, variations (permutations, 1-edit errors) of each set of sets. This
+cannot be exhaustively explored for any reasonably large query.
+
+So, we have to settle on an approximately optimal match using greedy algorithms
+and/or randomized algorithms. Basically, I make a logical graph out of this
+problem and explore it using greedy graph search algorithms (or a hill climbing
+algorithm).
+
+I'm still very much generating new ideas, throwing out old ideas, coming up with
+algorithms/approaches to solving them (not in detail, but just a sketch), etc.,
+so I don't have a polished document to give to you yet. I'll send you something
+by tomorrow night even if I am still generating new ideas/revising.
+
+Another thing I'm doing:
+
+When training the bloom filters, I'm devising the best way to train them.
+
+What's that mean?
+
+    (1) What sort of negative examples should I use. Note: I don't need positive
+examples, except to insert them into the bloom filter one time. I've worked out
+the formal math to show interesting perspectives on this and how to go about
+training it.
+
+    The big point here, though, is that I should only train it on negative
+examples which are probable. That is, for a bloom filter with k-grams as
+members, only train it on probable k-grams. So, sample from a distribution of
+k-grams, weighted by probability of seeing that k-gram, and minimize false
+positives on that sampling. If the bloom filter incorrectly says some random
+sequence of characters is a member, that won't harm the probability of a false
+positive nearly as much.
+
+
+==============
+
+	for test data:		
+		
+			1 permutes can be done exhaustively. If N unique words, O(N)
+			2 permutes probably exhaustively also
+			
+				- if training data has N unique words, permutations of 2, O(N^2)
+				
+			3 permutes... look into 3grams (ngrams). why?
+			
+				- only issue tests from probable 3grams to bloom filter. we know bloom filter
+				correctly matches true positives, tests need to see if it doesn't have too many
+				false positives.
+				
+					* sample from a large 3gram distribution (frequeny counts for each 3gram
+					are provided -- just make a cdf from it the pdf distribution and quickly
+					sample from it)
+						- this way, we'll draw probable samples more often and so optimizer will
+						want to reduce error on probable search terms more so than improbable
+						search terms (very likely 3grams may even be drawn multiple times, making
+						false positives on them especially harmful -- which is good)
+						
+						
+						
+						
+						
+---
+
+if use multiple block granularities, then changing a block means we must update every block
+in the hiearchy that is affected by the update. for instance, if we have a super-block for the
+whole document to very quickly determine if a document has most or all words in a search query,
+then any changes calls for changing this super-block. we could just let the superblock become stale
+with respect to newest version and only update it periodically.
+
+also, if we want to be able to give a person access (the entire thing) to a sub-block, then it
+should be encrypted differently than other blocks. the disadvantage with this is, if we have a
+hierarchy of blocks, e.g., the superblock, then we must duplicate the contents N times if we have
+N granularity heirarchies. there is also overhead from extra bloom filters, info about hash
+functions, and info about blocks. this may add inflate size appreciably. the good news is, if we
+are compressing at least the blocks (not the bloom filter data used for rapid querying), then all
+of that redundancy can be effectively eliminated if we compress the data first, then encrypt the
+compressed file.
+
+
+
+
+
+
+---
+
+don't juse output "is a member" or "is not a member" unless it precisely is a member. if it's
+only approximate, then output a fuzzy value [0, 1]. then, can also use fuzzy operators, like very,
+to work with them... e.g., very(match(doc, search_terms)) >= 0.5
+
+if v^2 = 1/2 -> v = 1/sqrt(2) ~ .7. this facilitates querying an entire filesystem. first do a
+course-grained search, only include docs with a fuzzy value >= 0.9, then do a finer grained search
+rince and repeat until narrow down on only a few encrypted documents.
+
+at a course level, we can be dealing with something like a subdirectory under a multi-level
+directory structure. then the first question is, does this directory have a match? if so, then
+the next question is, which files in the root directory and subdirectories under the root
+directory have a match? add the files in the root to a list. now do the same thing for each sub-
+directory that we did for the root. do this until we have a set of files. now we do an operation
+similiar to the one we did on the directory structure.
+
+=====================
+
+
+single layer bloom filter network:
+	- train N nodes (bloom filters) in aggregate s.t. node i has a sufficiently small false
+	positive rate on "classifying" class i.
+	
+	layer 0 can be the input node; in our case, it is a message (document). then, separately
+	train each bloom filter to do a different kind of classification. for instance, instead of
+	the binary class "does this phrase partially match this message", we can ask which class does
+	this message belong in? for example, it could be a topical search: which topic is this message
+	about? automobiles, science, science and automobiles, education, etc.
+
+
+multilayer bloom filter network
+	- organize nodes into a tree structure with M levels s.t. there are N = 2^m - 1 nodes;
+	2^(m-1) leaf nodes (binary outputs) and 2^(m-1) - 1 interior nodes.
+	
+	why do a multilayer bloom filter network as opposed to a single layer bloom filter network?
+	in practice, this question is not yet known, but i would guess that one answer might be:
+	
+	because now you can use much simpler basis hash functions for each bloom filter to find some
+	better way to quickly explore "hash-space" and converge to good solutions.
+	
+	on this topic, one might ask, why even bother with multi-hash bloom filters? instead, why not
+	arrange a multilayer hash network?
+	
+	note: there is the question of what to output from bloom filter in level i to bloom filter in
+	level i + 1. in neural networks, the output is generally a scalar in the range from 0 to 1 or
+	-1 to 1, which is easy to work with mathematically. but, our bloom filter is working with
+	a more symbolic, structured inputs -- like preprocessed messages.
+	
+	note: these inputs can be viewed
+	as feature vectors, in which case it is clear we could replace the bloom filter with something
+	like a neural network, which operate on numerical feature vectors, if we preprocess the
+	messages accordingly (e.g., transform a sequence of words into a sequence of scalars), and use
+	neural networks to do the classification. this kind of transformation wouldn't work very well
+	for the neural network, however, so other kinds of transformations are generally used. e.g.,
+	a naive bayes or neural network might just use word frequencies (good for answering questinons
+	like, "is this message spam?")
+	
+	so, the question remains, what to output from one bloom filter to the next? there don't yet
+	appear to be any good answers to this question, at least not without further complicating the
+	structure. one thing you could do is to feed *every* bloom filter (node in the network) a tuple
+	of (original message, discrete number). so, a bloom filter must not only deal with the original
+	message, but also an additional discrete number which represents the "classification" of
+	the message according to said output node (bloom filter). my immediate reaction to this is,
+	i'm not sure this is taking the approach in a good direction... so maybe the single layer
+	bloom filter network should be more fully explored before anything else is done.
+	
+
+=========================
+local co-occurrence statistics
+    * use a sliding window (of blocks) to find a solution that maximizes
+    distance measure.
+    
+    * words that occur together (within some sliding window) probably share
+    a similar context and have similar meanins
+    
+    * example: check +-k blocks for the terms of a search query (this is
+    locality measure).
+        - prefer to match large n-grams (or rearrangements of said n-grams)
+        within this window.
+        
+        - instead of considering a message's total of N blocks at a time, we
+        only entertain k < N blocks (constant) at a time, doing a single pass
+        through all the block windows. so, proportional to k *
+        (number of windows) ~ kN
+        
+            * start with a small window, do the pass
+                - get a distance measure for it
+                    * for each block, match as many of the keywords as
+                    possible
+            
+            * increase the size of the window, k' = k + c
+                - is it better or worse?
+                
+                
+                
+WordNet has been studied to expand queries with conceptually-related words
+==============
+	- auto-tune hash functions by doing some sort of hill climbing algorithm
+	to search through parameter space of some basic hash functions and other
+	bloom filter properties
+		- possible paramters:
+			* number of hash functions
+			* types of hash functions
+			* for a given hash function, vary parameters for it
+				- prime coefficient, seed prime, etc.
+		- i implemented a basic strategy for this where i constructed a variable
+		number of hash functions, and varied the prime coefficient and
+		seed prime for a single type of hash function, then constructed the
+		bloom filter based on these parameters and the given bloom filter members.
+		i then performed trial runs where i counted the number of false positives on
+		an exhaustive or random sample of the message space. i did this for N
+		different exhaustive or random parameter configurations and chose the one
+		that performed the best
+			- NOTE: this sort of autotuning is expensive, and there are definitely
+			better ways to converge to ideal solutions
+				- i think the best approach would be to implement a genetic
+				algorithm -- i'm doing it completely randomly instead of selecting
+				the best from an (initially random) population and slightly varying
+				them to produce "offspring", rince and repeat
+					- this would have much faster convergence if done right
+
+			- NOTE #2: if the set members change, then at some point the bloom
+			filter's hash functions could become poor (far from optimal). so,
+			depending on how frequently these changes occur, the frequency of
+			autotuning may need to vary (since autotuning incurs an execution
+			cost)
+			
+			- typically, for the problems i gave it, a single hash function ended
+			up being the best performer, but my sample spaces were probably
+			atypical
+				- i also did a exhaustive tests, but this is not realistic since
+				only a small subset of the messages should be, in practice, tested
+				for membership. that is to say, the distribution of messages from
+				which a test for membership will be performed on is not a uniform
+				distribution -- i should therefore not weigh failures on unlikely
+				messages the same as failures on likely messages
+					
+	- thought: posession of the bloom filter/hash compromises the contents of the plaintext.
+	that is, P[m = m* | hash = hash* and bloom = bloom*] > p[m = m*]. in a perfect system, it would
+	tell us nothing, that is P[m = m* | hash = hash* and bloom = bloom*] = p[m = m*]. but clearly, this
+	defeats the purpose of being able to search the document.
+
+		we want them to be able to easily determine if there are aproximate substrings matches.
+		the question is, from this, how difficult is it for someone recreate the entire message
+		without knowing anything about the contents of the message other than being able to inspect
+		and query a bloom filter. by constructing a large set of substrings, it seems possible
+		to re-create a lot of the messages content. this is much easier than, say,
+		exhaustively exploring a large key space to try to determine which of the decodings are
+		reasonable.
+		
+=========================
+
+
+prelimary research. also, implemented these ideas. code is available if you desire, although
+it has a circular dependency i need to resolve before it compiles.
+
+I did a little bit of research last night on encrypted searching. I learned that, one way to do this
+is to input the message into a bloom filter, in some way, and send it along with the encrypted
+message to facilitate searching.
+
+- designed and implemented a solution to searching substrings of the message, call it Q
+	- preprocess message: output message Q'
+		- strip nonalphanumeric characters and extra whitespace
+		- Q of size N -> smaller Q' of size M < N
+		- makes searching substrings more reliable against slight variations and reduces
+			space complexity of next step
+	- construct all possible subsequences of Q'
+		- there are M^2 / 2 subsequences, so quadratic space complexity in size of preprocessed
+		message Q'
+	-
+	
+		
+- problems
+	- quadratic space complexity (M^2/2) is not ideal, especially since size of Q' = M can be very
+	large
+		- if there are 10^n words, then there are (10^n)^2 = 10^(2n) / 2 subsequences.
+		- to avoid having too many false positives, size of bloom filter will need to scale with
+		the number of subsequences M^2/2 in some way
+			- more research needed to determine how it scales
+				- preliminary research on this
+					- auto-tune hash functions by doing some sort of hill climbing algorithm
+					to search through parameter space of some basic hash functions and other
+					bloom filter properties
+						- possible paramters:
+							* number of hash functions
+							* types of hash functions
+							* for a given hash function, vary parameters for it
+								- prime coefficient, seed prime, etc.
+						- i implemented a basic strategy for this where i constructed a variable
+						number of hash functions, and varied the prime coefficient and
+						seed prime for a single type of hash function, then constructed the
+						bloom filter based on these parameters and the given bloom filter members.
+						i then performed trial runs where i counted the number of false positives on
+						an exhaustive or random sample of the message space. i did this for N
+						different exhaustive or random parameter configurations and chose the one
+						that performed the best
+							- NOTE: this sort of autotuning is expensive, and there are definitely
+							better ways to converge to ideal solutions
+								- i think the best approach would be to implement a genetic
+								algorithm -- i'm doing it completely randomly instead of selecting
+								the best from an (initially random) population and slightly varying
+								them to produce "offspring", rince and repeat
+									- this would have much faster convergence if done right
+	
+							- NOTE #2: if the set members change, then at some point the bloom
+							filter's hash functions could become poor (far from optimal). so,
+							depending on how frequently these changes occur, the frequency of
+							autotuning may need to vary (since autotuning incurs an execution
+							cost)
+							
+							- typically, for the problems i gave it, a single hash function ended
+							up being the best performer, but my sample spaces were probably
+							atypical
+								- i also did a exhaustive tests, but this is not realistic since
+								only a small subset of the messages should be, in practice, tested
+								for membership. that is to say, the distribution of messages from
+								which a test for membership will be performed on is not a uniform
+								distribution -- i should therefore not weigh failures on unlikely
+								messages the same as failures on likely messages
+					
+	- hash functions which generated bloom filter must be shared
+		- does this give people any information, e.g., P(decrypted(c) = m | 
+		
+
+	- thought: posession of the bloom filter/hash compromises the contents of the plaintext.
+	that is, P[m = m* | hash = hash* and bloom = bloom*] > p[m = m*]. in a perfect system, it would
+	tell us nothing, that is P[m = m* | hash = hash* and bloom = bloom*] = p[m = m*]. but clearly, this
+	defeats the purpose of being able to search the document.
+
+		we want them to be able to easily determine if there are aproximate substrings matches.
+		the question is, from this, how difficult is it for someone recreate the entire message
+		without knowing anything about the contents of the message other than being able to inspect
+		and query a bloom filter. by constructing a large set of substrings, it seems possible
+		to recreate a lot of the messagee content fairly quickly. this is much easier than, say,
+		exhaustively exploring a large key space to try to determine which of the decodings are
+		reasonable.
+		
+	- doesn't handle partial word searches
+		- one way to do partial word searches is to operate at the character level rather than
+		word level
+			- unfortunately significantly increases space complexity
+				- if average word size in Q' is K and it has M words, then space complexity of
+				all subsequences is (M*K)^2 / 2 = K^2 * (space complexity of word-level approach)
+				
+	- doesn't handle searching on slight rearranagments (permutations) of substrings, e.g., if Q' =
+	"hello world" then doing a search for "World Hello" will not be found. one way to address this
+	is to either permute Q' or the substrings the user wants to search for (space-complexity-wise,
+	it seems preferrable to permute the substring the user wants to search for on the reasonable
+	assumption that such a substring is expected to be much smaller than the message Q'), but
+	permute them in what ways? if you do a total permutation on Q' itself, then (a) space complexity
+	is intractable, and (b) its an extremely inefficient way of just doing a test to see if each
+	word in the substring to be	searched for is a member of the set. so, more likely, local
+	permutations would be more reasonable, e.g., "hello, world. how are you?" preprocesses to "hello
+	world how are you". then, a local permutation may, for each position i, i+1, ..., i+k, permute
+	those and insert them into the bloom filter. this particular example would "only" increase the
+	size of the subsequences by a factor of (k+1)!, e.g., swapping only adjacent positions where
+	k = 1 would only increase it by a factor of 2.
+		- now, doing a search for "World, hello!" would find a match in the message "Hello, world"
+		if we let k >= 1.
+        
+=========================
+	- auto-tune hash functions by doing some sort of hill climbing algorithm
+	to search through parameter space of some basic hash functions and other
+	bloom filter properties
+		- possible paramters:
+			* number of hash functions
+			* types of hash functions
+			* for a given hash function, vary parameters for it
+				- prime coefficient, seed prime, etc.
+		- i implemented a basic strategy for this where i constructed a variable
+		number of hash functions, and varied the prime coefficient and
+		seed prime for a single type of hash function, then constructed the
+		bloom filter based on these parameters and the given bloom filter members.
+		i then performed trial runs where i counted the number of false positives on
+		an exhaustive or random sample of the message space. i did this for N
+		different exhaustive or random parameter configurations and chose the one
+		that performed the best
+			- NOTE: this sort of autotuning is expensive, and there are definitely
+			better ways to converge to ideal solutions
+				- i think the best approach would be to implement a genetic
+				algorithm -- i'm doing it completely randomly instead of selecting
+				the best from an (initially random) population and slightly varying
+				them to produce "offspring", rince and repeat
+					- this would have much faster convergence if done right
+
+			- NOTE #2: if the set members change, then at some point the bloom
+			filter's hash functions could become poor (far from optimal). so,
+			depending on how frequently these changes occur, the frequency of
+			autotuning may need to vary (since autotuning incurs an execution
+			cost)
+			
+			- typically, for the problems i gave it, a single hash function ended
+			up being the best performer, but my sample spaces were probably
+			atypical
+				- i also did a exhaustive tests, but this is not realistic since
+				only a small subset of the messages should be, in practice, tested
+				for membership. that is to say, the distribution of messages from
+				which a test for membership will be performed on is not a uniform
+				distribution -- i should therefore not weigh failures on unlikely
+				messages the same as failures on likely messages
+					
+	- thought: posession of the bloom filter/hash compromises the contents of the plaintext.
+	that is, P[m = m* | hash = hash* and bloom = bloom*] > p[m = m*]. in a perfect system, it would
+	tell us nothing, that is P[m = m* | hash = hash* and bloom = bloom*] = p[m = m*]. but clearly, this
+	defeats the purpose of being able to search the document.
+
+		we want them to be able to easily determine if there are aproximate substrings matches.
+		the question is, from this, how difficult is it for someone recreate the entire message
+		without knowing anything about the contents of the message other than being able to inspect
+		and query a bloom filter. by constructing a large set of substrings, it seems possible
+		to re-create a lot of the messages content. this is much easier than, say,
+		exhaustively exploring a large key space to try to determine which of the decodings are
+		reasonable.
+        
+=============================
+
+
+prelimary research. also, implemented these ideas. code is available if you desire, although
+it has a circular dependency i need to resolve before it compiles.
+
+I did a little bit of research last night on encrypted searching. I learned that, one way to do this
+is to input the message into a bloom filter, in some way, and send it along with the encrypted
+message to facilitate searching.
+
+- designed and implemented a solution to searching substrings of the message, call it Q
+	- preprocess message: output message Q'
+		- strip nonalphanumeric characters and extra whitespace
+		- Q of size N -> smaller Q' of size M < N
+		- makes searching substrings more reliable against slight variations and reduces
+			space complexity of next step
+	- construct all possible subsequences of Q'
+		- there are M^2 / 2 subsequences, so quadratic space complexity in size of preprocessed
+		message Q'
+	-
+	
+		
+- problems
+	- quadratic space complexity (M^2/2) is not ideal, especially since size of Q' = M can be very
+	large
+		- if there are 10^n words, then there are (10^n)^2 = 10^(2n) / 2 subsequences.
+		- to avoid having too many false positives, size of bloom filter will need to scale with
+		the number of subsequences M^2/2 in some way
+			- more research needed to determine how it scales
+				- preliminary research on this
+					- auto-tune hash functions by doing some sort of hill climbing algorithm
+					to search through parameter space of some basic hash functions and other
+					bloom filter properties
+						- possible paramters:
+							* number of hash functions
+							* types of hash functions
+							* for a given hash function, vary parameters for it
+								- prime coefficient, seed prime, etc.
+						- i implemented a basic strategy for this where i constructed a variable
+						number of hash functions, and varied the prime coefficient and
+						seed prime for a single type of hash function, then constructed the
+						bloom filter based on these parameters and the given bloom filter members.
+						i then performed trial runs where i counted the number of false positives on
+						an exhaustive or random sample of the message space. i did this for N
+						different exhaustive or random parameter configurations and chose the one
+						that performed the best
+							- NOTE: this sort of autotuning is expensive, and there are definitely
+							better ways to converge to ideal solutions
+								- i think the best approach would be to implement a genetic
+								algorithm -- i'm doing it completely randomly instead of selecting
+								the best from an (initially random) population and slightly varying
+								them to produce "offspring", rince and repeat
+									- this would have much faster convergence if done right
+	
+							- NOTE #2: if the set members change, then at some point the bloom
+							filter's hash functions could become poor (far from optimal). so,
+							depending on how frequently these changes occur, the frequency of
+							autotuning may need to vary (since autotuning incurs an execution
+							cost)
+							
+							- typically, for the problems i gave it, a single hash function ended
+							up being the best performer, but my sample spaces were probably
+							atypical
+								- i also did a exhaustive tests, but this is not realistic since
+								only a small subset of the messages should be, in practice, tested
+								for membership. that is to say, the distribution of messages from
+								which a test for membership will be performed on is not a uniform
+								distribution -- i should therefore not weigh failures on unlikely
+								messages the same as failures on likely messages
+					
+	- hash functions which generated bloom filter must be shared
+		- does this give people any information, e.g., P(decrypted(c) = m | 
+		
+
+	- thought: posession of the bloom filter/hash compromises the contents of the plaintext.
+	that is, P[m = m* | hash = hash* and bloom = bloom*] > p[m = m*]. in a perfect system, it would
+	tell us nothing, that is P[m = m* | hash = hash* and bloom = bloom*] = p[m = m*]. but clearly, this
+	defeats the purpose of being able to search the document.
+
+		we want them to be able to easily determine if there are aproximate substrings matches.
+		the question is, from this, how difficult is it for someone recreate the entire message
+		without knowing anything about the contents of the message other than being able to inspect
+		and query a bloom filter. by constructing a large set of substrings, it seems possible
+		to recreate a lot of the messagee content fairly quickly. this is much easier than, say,
+		exhaustively exploring a large key space to try to determine which of the decodings are
+		reasonable.
+		
+	- doesn't handle partial word searches
+		- one way to do partial word searches is to operate at the character level rather than
+		word level
+			- unfortunately significantly increases space complexity
+				- if average word size in Q' is K and it has M words, then space complexity of
+				all subsequences is (M*K)^2 / 2 = K^2 * (space complexity of word-level approach)
+				
+	- doesn't handle searching on slight rearranagments (permutations) of substrings, e.g., if Q' =
+	"hello world" then doing a search for "World Hello" will not be found. one way to address this
+	is to either permute Q' or the substrings the user wants to search for (space-complexity-wise,
+	it seems preferrable to permute the substring the user wants to search for on the reasonable
+	assumption that such a substring is expected to be much smaller than the message Q'), but
+	permute them in what ways? if you do a total permutation on Q' itself, then (a) space complexity
+	is intractable, and (b) its an extremely inefficient way of just doing a test to see if each
+	word in the substring to be	searched for is a member of the set. so, more likely, local
+	permutations would be more reasonable, e.g., "hello, world. how are you?" preprocesses to "hello
+	world how are you". then, a local permutation may, for each position i, i+1, ..., i+k, permute
+	those and insert them into the bloom filter. this particular example would "only" increase the
+	size of the subsequences by a factor of (k+1)!, e.g., swapping only adjacent positions where
+	k = 1 would only increase it by a factor of 2.
+		- now, doing a search for "World, hello!" would find a match in the message "Hello, world"
+		if we let k >= 1.
+
+============================
+Hello, I'm looking forward to seeing you Friday.
+
+I've been working hard on ideas/approaches for the problem. And, here is how I
+define the problem:
+
+(1) Basic components are n-grams. To allow for better approximate matches for a
+search query (which is a k-gram, e.g., "hello" is a 1-gram search query, and
+"hello world" is a 2-gram search query -- we call such queries k-queries), the
+bloomified message can exactly match search queries up to k-grams.
+
+So, for an n-query, we try to find an optimal partition of the query terms such
+that the largest partition is <= k and the smallest is >= 1. An optimal
+partition is one whose distance measure from the message M is at a minimum.
+
+For k > c, where c is reasonable small, finding an optimal match is probably not
+tractable. The number of partitions is a bell number, where an n-query's
+tightest bound found yet is ((0.792*n)/(ln(n+1)))^n,n=10, which asymptotically
+grows faster than the exponential function If n = 10, ways to partition =
+154508. And, moreover, it will be hard (if not impossible) looking at nodes
+that have already been visited. And, furthermore, we will be trying,
+optionally, variations (permutations, 1-edit errors) of each set of sets. This
+cannot be exhaustively explored for any reasonably large query.
+
+So, we have to settle on an approximately optimal match using greedy algorithms
+and/or randomized algorithms. Basically, I make a logical graph out of this
+problem and explore it using greedy graph search algorithms (or a hill climbing
+algorithm).
+
+I'm still very much generating new ideas, throwing out old ideas, coming up with
+algorithms/approaches to solving them (not in detail, but just a sketch), etc.,
+so I don't have a polished document to give to you yet. I'll send you something
+by tomorrow night even if I am still generating new ideas/revising.
+
+Another thing I'm doing:
+
+When training the bloom filters, I'm devising the best way to train them.
+
+What's that mean?
+
+    (1) What sort of negative examples should I use. Note: I don't need positive
+examples, except to insert them into the bloom filter one time. I've worked out
+the formal math to show interesting perspectives on this and how to go about
+training it.
+
+    The big point here, though, is that I should only train it on negative
+examples which are probable. That is, for a bloom filter with k-grams as
+members, only train it on probable k-grams. So, sample from a distribution of
+k-grams, weighted by probability of seeing that k-gram, and minimize false
+positives on that sampling. If the bloom filter incorrectly says some random
+sequence of characters is a member, that won't harm the probability of a false
+positive nearly as much.
+
+==============================
+
+	for test data:		
+		
+			1 permutes can be done exhaustively. If N unique words, O(N)
+			2 permutes probably exhaustively also
+			
+				- if training data has N unique words, permutations of 2, O(N^2)
+				
+			3 permutes... look into 3grams (ngrams). why?
+			
+				- only issue tests from probable 3grams to bloom filter. we know bloom filter
+				correctly matches true positives, tests need to see if it doesn't have too many
+				false positives.
+				
+					* sample from a large 3gram distribution (frequeny counts for each 3gram
+					are provided -- just make a cdf from it the pdf distribution and quickly
+					sample from it)
+						- this way, we'll draw probable samples more often and so optimizer will
+						want to reduce error on probable search terms more so than improbable
+						search terms (very likely 3grams may even be drawn multiple times, making
+						false positives on them especially harmful -- which is good)
+						
+						
+						
+						
+						
+---
+
+if use multiple block granularities, then changing a block means we must update every block
+in the hiearchy that is affected by the update. for instance, if we have a super-block for the
+whole document to very quickly determine if a document has most or all words in a search query,
+then any changes calls for changing this super-block. we could just let the superblock become stale
+with respect to newest version and only update it periodically.
+
+also, if we want to be able to give a person access (the entire thing) to a sub-block, then it
+should be encrypted differently than other blocks. the disadvantage with this is, if we have a
+hierarchy of blocks, e.g., the superblock, then we must duplicate the contents N times if we have
+N granularity heirarchies. there is also overhead from extra bloom filters, info about hash
+functions, and info about blocks. this may add inflate size appreciably. the good news is, if we
+are compressing at least the blocks (not the bloom filter data used for rapid querying), then all
+of that redundancy can be effectively eliminated if we compress the data first, then encrypt the
+compressed file.
+
+
+
+
+
+
+---
+
+don't juse output "is a member" or "is not a member" unless it precisely is a member. if it's
+only approximate, then output a fuzzy value [0, 1]. then, can also use fuzzy operators, like very,
+to work with them... e.g., very(match(doc, search_terms)) >= 0.5
+
+if v^2 = 1/2 -> v = 1/sqrt(2) ~ .7. this facilitates querying an entire filesystem. first do a
+course-grained search, only include docs with a fuzzy value >= 0.9, then do a finer grained search
+rince and repeat until narrow down on only a few encrypted documents.
+
+at a course level, we can be dealing with something like a subdirectory under a multi-level
+directory structure. then the first question is, does this directory have a match? if so, then
+the next question is, which files in the root directory and subdirectories under the root
+directory have a match? add the files in the root to a list. now do the same thing for each sub-
+directory that we did for the root. do this until we have a set of files. now we do an operation
+similiar to the one we did on the directory structure.
+
+==========================================
+
+
+single layer bloom filter network:
+	- train N nodes (bloom filters) in aggregate s.t. node i has a sufficiently small false
+	positive rate on "classifying" class i.
+	
+	layer 0 can be the input node; in our case, it is a message (document). then, separately
+	train each bloom filter to do a different kind of classification. for instance, instead of
+	the binary class "does this phrase partially match this message", we can ask which class does
+	this message belong in? for example, it could be a topical search: which topic is this message
+	about? automobiles, science, science and automobiles, education, etc.
+
+
+multilayer bloom filter network
+	- organize nodes into a tree structure with M levels s.t. there are N = 2^m - 1 nodes;
+	2^(m-1) leaf nodes (binary outputs) and 2^(m-1) - 1 interior nodes.
+	
+	why do a multilayer bloom filter network as opposed to a single layer bloom filter network?
+	in practice, this question is not yet known, but i would guess that one answer might be:
+	
+	because now you can use much simpler basis hash functions for each bloom filter to find some
+	better way to quickly explore "hash-space" and converge to good solutions.
+	
+	on this topic, one might ask, why even bother with multi-hash bloom filters? instead, why not
+	arrange a multilayer hash network?
+	
+	note: there is the question of what to output from bloom filter in level i to bloom filter in
+	level i + 1. in neural networks, the output is generally a scalar in the range from 0 to 1 or
+	-1 to 1, which is easy to work with mathematically. but, our bloom filter is working with
+	a more symbolic, structured inputs -- like preprocessed messages.
+	
+	note: these inputs can be viewed
+	as feature vectors, in which case it is clear we could replace the bloom filter with something
+	like a neural network, which operate on numerical feature vectors, if we preprocess the
+	messages accordingly (e.g., transform a sequence of words into a sequence of scalars), and use
+	neural networks to do the classification. this kind of transformation wouldn't work very well
+	for the neural network, however, so other kinds of transformations are generally used. e.g.,
+	a naive bayes or neural network might just use word frequencies (good for answering questinons
+	like, "is this message spam?")
+	
+	so, the question remains, what to output from one bloom filter to the next? there don't yet
+	appear to be any good answers to this question, at least not without further complicating the
+	structure. one thing you could do is to feed *every* bloom filter (node in the network) a tuple
+	of (original message, discrete number). so, a bloom filter must not only deal with the original
+	message, but also an additional discrete number which represents the "classification" of
+	the message according to said output node (bloom filter). my immediate reaction to this is,
+	i'm not sure this is taking the approach in a good direction... so maybe the single layer
+	bloom filter network should be more fully explored before anything else is done.
+
+===================================================
+
+research directions:
+
+    * big data:
+        use it for training (good negative example data sets)
+        use it to include only probable n-grams (even probable errors, typos,
+            permutations of word sequences for a given n-gram in the message)
+            --> helps us be selective with membership so we are able to
+                maximize accuracy on likely/useful questions, not unlikely
+                questions
+            --> reduces state space when searching in approximate matching
+            --> can include larger, more selective n-grams as members
+    * transform tokens (prehash) before inserting
+        - e.g., soundex ... reduces memberset size and makes it more forgiving
+        with typical search queries
+        
+    * training approaches
+    * graph search strategies
+    * probablistic models, semi-probablistic models (e.g., measure of rarity,
+      1/probability(x))
+    * validation sets -- to test if overfit, do not train on all negative
+    examples, only a large fraction (easy since we have as many as we like),
+    then see how well bloom filter generalizes to unseen negative examples
+        - don't overfit
+        - if it does overfit, find ways to revise learned parameters
+            - maybe need to penalize things like "too many hash functions" since
+            such high-dimensional parameters will tend to over-fit to the
+            particulars of the negative examples given to it
+                occam's razor
+    * treat bloom filter array like a vector; what is something like its
+      projection onto another bloom filter mean? (linear algebra stuff)
+
+====================
+local co-occurrence statistics
+    * use a sliding window (of blocks) to find a solution that maximizes
+    distance measure.
+    
+    * words that occur together (within some sliding window) probably share
+    a similar context and have similar meanins
+    
+    * example: check +-k blocks for the terms of a search query (this is
+    locality measure).
+        - prefer to match large n-grams (or rearrangements of said n-grams)
+        within this window.
+        
+        - instead of considering a message's total of N blocks at a time, we
+        only entertain k < N blocks (constant) at a time, doing a single pass
+        through all the block windows. so, proportional to k *
+        (number of windows) ~ kN
+        
+            * start with a small window, do the pass
+                - get a distance measure for it
+                    * for each block, match as many of the keywords as
+                    possible
+            
+            * increase the size of the window, k' = k + c
+                - is it better or worse?
+                
+                
+                
+WordNet has been studied to expand queries with conceptually-related words

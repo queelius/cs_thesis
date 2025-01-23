@@ -1,0 +1,10 @@
+false_positive_rate 0.000976563
+load_factor 0.95
+offset_radius 128
+algo 0
+psip
+	 index_size	29083660
+	 build_time	75945
+	    indexed	1000
+	       path	junk05\1000_4000_256_1_1_0_0.001\2\corpus_indexed\psip
+	  load_time	3857

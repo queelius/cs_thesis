@@ -1,0 +1,1196 @@
+#ifndef __PSI_MIN_H__
+#define __PSI_MIN_H__
+
+#include <iostream>
+#include <string>
+#include <ostream>
+#include "BitArray.h"
+#include "ICmph.h"
+#include "Hash.h"
+#include "Utils.h"
+#include "BinaryIO.h"
+#include <iomanip>
+#include <cstdint>
+#include "PsiFreq.h"
+#include "HiddenQuery.h"
+#include "ISecureIndex.h"
+#include "PsiFreq.h"
+#include <vector>
+
+namespace alex { namespace index
+{
+    // Perfect secure index
+    class PsiMin : public ISecureIndex
+    {
+        friend class PsiMinBuilder;
+
+        public:
+            const static uint8_t VERSION = 1;
+            const static char HEADER[];
+
+            PsiMin() : _hashWidth(0), _maxHash(0), _freq(nullptr) {};
+            PsiMin(const PsiMin& copy) :
+                _hashBits(copy._hashBits),
+                _hashWidth(copy._hashWidth),
+                _distWidth(copy._distWidth),
+                _distBits(copy._distBits),
+                _maxHash(copy._maxHash),
+                _phMin(copy._phMin),
+                _freq(copy._freq) {};
+
+            PsiMin(PsiMin&& src) :
+                _hashBits(std::move(src._hashBits)),
+                _hashWidth(src._hashWidth),
+                _distWidth(src._distWidth),
+                _distBits(std::move(src._distBits)),
+                _maxHash(src._maxHash),
+                _phMin(std::move(src._phMin)),
+                _freq(std::move(src._freq)) {};
+
+            PsiMin& operator=(PsiMin&& other)
+            {
+                if (this != &other)
+                {
+                    clear();
+
+                    _distBits = std::move(other._distBits);
+                    _hashBits = std::move(other._hashBits);                   
+                    _phMin = std::move(other._phMin);
+                    _freq = std::move(other._freq);
+
+                    _distWidth = other._distWidth;
+                    _hashWidth = other._hashWidth;
+                    _maxHash = other._maxHash;
+                    other._hashWidth = 0;
+                    other._distWidth = 0;
+                    other._maxHash = 0;
+                }
+
+                return *this;
+            };
+
+            PsiMin& operator=(const PsiMin& other)
+            {
+                if (this != &other)
+                {
+                    clear();
+
+                    _distBits = other._distBits;
+                    _hashBits = other._hashBits;
+                    _phMin = other._phMin;
+                    _freq = other._freq;
+                    _distWidth = other._distWidth;
+                    _hashWidth = other._hashWidth;
+                    _maxHash = other._maxHash;
+                }
+
+                return *this;
+            };
+
+            std::map<std::pair<HiddenQuery::HiddenTerm, HiddenQuery::HiddenTerm>, int> getMinPairWiseDistances(const HiddenQuery& q) const
+            {
+                std::vector<HiddenQuery::HiddenTerm> present;
+                for (const auto& t : q.terms)
+                {
+                    if (t.size() > 1)
+                    {
+                        // size == 1, then may be a unigram or bigram (bigram is a two word exact phrase)
+                        // min pair distance measures on this works fine -- in theory, although here i
+                        // won't be including the distance between two different bigrams, so if a term
+                        // of size 1 is a bigram, it won't be found in the min index.
+                        // but if size > 1, then it is a trigram or larger (three or more word exact phrase) -- proximity queries
+                        // on these are not supported. thus, the decision here is to ignore it.
+                        //
+                        // we don't actually ignore it when computing the getMinPairwiseDistScore, but
+                        // this is a diagnostic function where i want to see "real" values more than
+                        // estimated values.
+                        continue;
+                    }
+
+                    if (_freq->contains(t)) // in min pairs, only consider existent terms in the doc
+                        present.push_back(t);
+                }
+
+                const std::string& suffix = "|" + _freq->getReference();
+                std::map<std::pair<HiddenQuery::HiddenTerm, HiddenQuery::HiddenTerm>, int> pairs;
+                for (size_t i = 1; i < present.size(); ++i)
+                {
+                    for (size_t j = 0; j < i; ++j)
+                    {
+                        const auto& x1 = alex::crypt::hexdigest<alex::globals::digest_size>(present[i][0] + suffix);
+                        const auto& x2 = alex::crypt::hexdigest<alex::globals::digest_size>(present[j][0] + suffix);
+                        std::string p = (x1 < x2 ? 
+                                         x1 + "|" + x2 :
+                                         x2 + "|" + x1);
+
+                        const std::string& q = alex::crypt::hexdigest<alex::globals::digest_size>(std::move(p));
+                        const uint32_t idx = _phMin.search(q);
+                        const uint32_t value = alex::hash::jenkinsHash(q) % _maxHash;
+
+                        if (_hashBits.get(_hashWidth * idx, _hashWidth) == value)
+                            pairs[std::make_pair(present[i], present[j])] = _distBits.get(_distWidth * idx, _distWidth); // pair exists
+                        else
+                        {
+                            // expected distance between two randomly chosen points in the interval 0, approximate_words-1.
+                            pairs[std::make_pair(present[i], present[j])] = getApproximateWords() / 3;
+                        }
+                    }
+                }
+                return pairs;
+            }
+
+            double getMinPairwiseScore(const HiddenQuery& q) const
+            {
+                // NOTE: i need to redo this. all of those comments made me realize
+                // my math is actually pessimistic. the average distance between N
+                // pairs of points is L/(N^2-1), but i have it at L/3, insensitive
+                // to N. For N = 2, average distance between two points, we get
+                // L/(2^2-1)=L/3 as expected, but if N=3, L/(3^2-1) = L/8,
+                // and so on.
+                //
+                // if have time, will redo. but it's not that important.
+
+                const std::string& suffix = "|" + _freq->getReference();
+
+                std::vector<std::string> evaluateInPairs;
+                int k = 0;
+                for (const auto& t : q.terms)
+                {
+                    if (_freq->contains(t)) // in proximity, only consider existent terms in the doc
+                    {
+                        if (t.size() > 1)
+                        {
+                            // if size == 1, then it may be a unigram or bigram (bigram is a two word exact phrase)
+                            // min pair distance measures on this works fine -- in theory, although here i
+                            // won't be including the distance between two different bigrams, so if a term
+                            // of size 1 is a bigram, it won't be found in the index.
+                            // but if size > 1, then it is a trigram or larger (three or more word exact phrase) -- proximity queries
+                            // on these are not supported by PsiMin. Thus, the decision here is to
+                            // assume that it will be randomly dsitributed somewhere in the document
+                            // thus the expected distance between such a term and any other term
+                            // is document_length / 3. we will assume this.
+                            //
+                            // if all terms are phrases, then all pairs will be L/3.
+                            // that is, L*(t-1)/6, after normalizing by t matched terms.
+                            // let's keep track of matching terms that can't be used
+                            // in min pair wise calcs, call it k.
+                            //
+                            // in the end, we'll return sum of pairwise distances
+                            // plus Lk*(e+k-1)/6, where e+k is total matched terms.
+                            // if e = total, then k = 0 and this becomes zero.
+                            // if e = 0, then Lk(k-1)/6, which is what we had
+                            // above (all pairs will be L/3). it works for everything
+                            // in between also.
+                            ++k;
+                        }
+                        else
+                            evaluateInPairs.push_back(t[0]);
+                    }
+                }
+
+                const double L = getApproximateWords();
+                // if only one term is matched in a multi-term query,
+                // then return the length of the document.
+                if (evaluateInPairs.size() + k <= 1)
+                    return L;
+
+                double sum = 0;
+                int k2 = 0;
+                for (size_t i = 1; i < evaluateInPairs.size(); ++i)
+                {
+                    for (size_t j = 0; j < i; ++j)
+                    {
+                        const auto& x1 = alex::crypt::hexdigest<alex::globals::digest_size>(evaluateInPairs[i] + suffix);
+                        const auto& x2 = alex::crypt::hexdigest<alex::globals::digest_size>(evaluateInPairs[j] + suffix);
+                        std::string p = (x1 < x2 ? 
+                                         x1 + "|" + x2 :
+                                         x2 + "|" + x1);
+
+                        const std::string& q = alex::crypt::hexdigest<alex::globals::digest_size>(std::move(p));
+                        const uint32_t idx = _phMin.search(q);
+                        const uint32_t value = alex::hash::jenkinsHash(q) % _maxHash;
+
+                        if (_hashBits.get(_hashWidth * idx, _hashWidth) == value)
+                            sum += _distBits.get(_distWidth * idx, _distWidth); // pair exists
+                        else
+                        {
+                            // if not found in distBits, then the two terms
+                            // are farther apart than the maximum minimum
+                            // pairwise distance to record -- in this case,
+                            // assume the two words are chosen at random,
+                            // as before, so expected distance of L/3.
+                            sum += L / 3;
+                        }
+                    }
+                }
+
+                // normalize by number of matched terms
+                // more matches means larger sums, so let's
+                // not penalize that. there are other
+                // ways to normalize this, but this seems
+                // good enough.
+                //
+                // this looks a little complicated, but math
+                // has been worked out. other papers propose
+                // something like this, but they didn't have to
+                // deal with the fact that some matching terms
+                // can't be calculated in min pairs, which is
+                // why i add the L*k*(e+k-1)/6, then normalize the whole
+                // thing by number of matched terms, e+k.
+                //
+                // if only one term is matched, e+k-1=0, so
+                // this formula doesn't work for that. in this case,
+                // i return L, as mentioned earlier.
+                //
+                // if k>1 matches, but both are either phrases
+                // or beyond max min dist, then this becomes L/6.
+                // that's better than L. i wonder if it's TOO
+                // much better though?
+                //
+                // either way, for most documents, this won't matter
+                // much becaomse L will be much larger than 6,
+                // and the function we pass the distance into to get
+                // a proximity score will flatten out (asymptotically)
+                // very quickly. but for small documents, this does
+                // match the idea that if two or more terms are
+                // present, they'll be pretty close even if we
+                // can't do an actual min pairwise calculation and
+                // must resort to expected pairwise distances.
+
+                int t = k +- k2;
+                int e = evaluateInPairs.size() - k2;
+                
+
+                return (sum + L*k*(e + t - 1) / 6) / (e + t);
+
+                //return (sum + L*k*(evaluateInPairs.size() + k - 1) / 6) / (evaluateInPairs.size() + k);
+            };
+
+            //double getMinDistance(const alex::index::HiddenQuery::HiddenTerm& t1,
+            //                        const alex::index::HiddenQuery::HiddenTerm& t2)
+            //{
+            //    if (t1.size() != 1 || t2.size() != 1)
+            //        throw std::exception("Incompatible Terms");
+            //    else if (!_freq.contains(t1) || !_freq.contains(t2))
+            //        return std::numeric_limits<double>::infinity();
+            //
+            //    const auto& t1Prime = alex::crypt::hexdigest<alex::globals::digest_size>(t1[0] + "|" + _freq._ref);
+            //    const auto& t2Prime = alex::crypt::hexdigest<alex::globals::digest_size>(t2[0] + "|" + _freq._ref);
+            //    std::string p = (t1Prime < t2Prime ? t1Prime + "|" + t2Prime : t2Prime + "|" + t1Prime);
+            //
+            //    const std::string q = alex::crypt::hexdigest<alex::globals::digest_size>(std::move(p));
+            //    const uint32_t idx = _phMin.search(q);
+            //    const uint32_t value = alex::hash::jenkinsHash(q) % _maxHash;
+            //
+            //    if (_hashBits.get(_hashWidth * idx, _hashWidth) == value)
+            //        return _distBits.get(_distWidth * idx, _distWidth); // pair exists
+            //    else
+            //        return alex::globals::max_min_pair_dist;
+            //};
+
+            void read(std::istream& file)
+            {
+                using namespace alex::io::binary;
+
+                const std::string& hdr = readString(file);
+                if (hdr != HEADER)
+                    throw std::exception(("Unexpected Header: " + hdr).c_str());
+
+                unsigned int version = readU8(file);
+                if (version != VERSION)
+                    throw std::exception("Unexpected Version");
+
+                if (_freq == nullptr)
+                    _freq = SecureIndex(new PsiFreq);
+                else
+                    _freq->clear();
+                _freq->read(file);
+
+                // get hash of encrypted document
+                // _refHash = readString(file);
+
+                // de-serialize perfect hash function
+                _phMin.read(file);
+
+                // read hash entries
+                _hashWidth = readVarU32(file); // get number of bits per hash entry (false positive rate = 1/2^width)
+
+                _maxHash = (1 << _hashWidth); // derive maximum hash value from fp bits
+
+                readBitArray(file, _hashBits); // read bit array for compactly (packed) storing hash entries
+
+                // read frequency entries
+                _distWidth = readVarU32(file);
+
+                readBitArray(file, _distBits);
+            };
+            void write(std::ostream& file)
+            {
+                using namespace alex::io::binary;
+
+                writeString(file, HEADER);
+                writeU8(file, VERSION);
+
+                _freq->write(file);
+
+                // write hash of encrypted document
+                // writeString(file, _refHash);
+
+                // serialize perfect hash function
+                _phMin.write(file);
+
+                // write hash entries
+                writeVarU32(file, _hashWidth);
+
+                // write bit array for compactly (packed) hash entries
+                writeBitArray(file, _hashBits);
+
+                // write block data
+                writeVarU32(file, _distWidth);
+                writeBitArray(file, _distBits);
+            };
+            virtual ~PsiMin() { clear(); };
+
+            void dump(int depth = 0)
+            {
+                std::cout << std::setw(depth) << "" << "PsiMin" << std::endl;
+                _freq->dump(depth+1);
+                std::cout << std::setw(depth) << "" << "distWidth: " << _distWidth << std::endl;
+                std::cout << std::setw(depth) << "" << "hashWidth: " << _hashWidth << std::endl;
+                std::cout << std::setw(depth) << "" << "maxHash: " << _maxHash << std::endl;
+                std::cout << std::setw(depth) << "" << "hashBits:" << std::endl;
+                _hashBits.dump(depth+1);
+                std::cout << std::setw(depth) << "" << "distBits:" << std::endl;
+                _distBits.dump(depth+1);
+                std::cout << std::setw(depth) << "" << "phMin:" << std::endl;
+                _phMin.dump(depth+1);
+            };
+
+            void clear()
+            {
+                if (_hashBits.size() != 0)
+                {
+                    _distWidth = 0;
+                    _hashWidth = 0;
+                    _maxHash = 0;
+                    _hashBits.clear();
+                    _distBits.clear();
+                    _phMin.clear();
+                    _freq->clear();
+                }
+            };
+            unsigned int getApproximateWords() const { return _freq->getApproximateWords(); };
+            bool hasFrequency() const { return true; };
+            bool hasProximity() const { return true; };
+            TSecureIndex getType() const { return TSecureIndex::PsiMin; };
+            void read(const boost::filesystem::path& infile)
+            {
+                read(std::ifstream(infile.string(), std::ios::binary));
+            };
+            void write(const boost::filesystem::path& infile)
+            {
+                write(std::ofstream(infile.string(), std::ios::binary));
+            };           
+            unsigned int getFrequency(const alex::index::HiddenQuery::HiddenTerm& t) const
+            {
+                return _freq->getFrequency(t);
+            };
+            bool contains(const alex::index::HiddenQuery::HiddenTerm& t) const
+            {
+                return _freq->contains(t);
+            };
+            bool containsAny(const alex::index::HiddenQuery& q) const
+            {
+                return _freq->containsAny(q);
+            };
+            bool containsAll(const alex::index::HiddenQuery& q) const
+            {
+                return _freq->containsAll(q);
+            };
+            std::string getReference() const
+            {
+                return _freq->getReference();
+            };
+            void setReference(const std::string& ref)
+            {
+                _freq->setReference(ref);
+            };
+            std::string toString() const
+            {
+                std::stringstream ss;
+                ss << _freq->toString() << std::endl;
+                for (unsigned int i = 0; i < _hashBits.size() / _hashWidth; ++i)
+                {
+                    ss << std::right << std::setw(8) << i << " -> hash={";
+                    for (unsigned int j = 0; j < _hashWidth; ++j)
+                       ss << _hashBits.getBit(i * _hashWidth + j);
+                    ss << "} :: dist=" << _distBits.get(i * _distWidth, _distWidth) << std::endl;
+                }
+                ss << std::endl;
+                return ss.str();
+            };
+            std::string getPreferredFileExtension() const { return HEADER; };
+
+        private:
+            static const unsigned int MAX_BYTE = (1 << CHAR_BIT);
+        
+            alex::hash::ICmph _phMin;
+
+            uint32_t _maxHash;
+            alex::collections::BitArray _hashBits;
+            uint32_t _hashWidth;
+
+            alex::collections::BitArray _distBits;
+            uint32_t _distWidth;
+
+            SecureIndex _freq;
+    };
+
+    const char PsiMin::HEADER[] = "psim";
+}}
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#ifndef __PSI_MIN_BUILDER_H__
+#define __PSI_MIN_BUILDER_H__
+
+#include <string>
+#include <unordered_set>
+#include <unordered_map>
+#include <fstream>
+#include "Globals.h"
+#include "PsiFreqBuilder.h"
+#include "PsiMin.h"
+#include "Utils.h"
+#include "BitArray.h"
+#include <boost/filesystem.hpp>
+#include "ISecureIndex.h"
+
+namespace alex { namespace index
+{
+    class PsiMinBuilder
+    {
+    public:
+        struct BuilderParams
+        {
+            uint32_t maxFreq;
+            uint32_t falsePositiveBits;
+            int verbose;
+            std::string ref;
+            double loadFactor;
+            cmph_cpp::CMPH_ALGO algo;
+            uint32_t maxMinPairMaxDist;
+            std::unordered_set<std::string> ignoreWords;
+            std::vector<std::string> secrets;
+            bool stemming;
+            // ignore regular expression pattern (list?)
+
+            void falsePositiveRate(double rate)
+            {
+                if(rate < 0 || rate > 1)
+                    throw std::exception("False Positive Rate Must Be In Range [0, 1]");
+                falsePositiveBits = (uint32_t)std::ceil(-std::log(rate) / std::log(2));
+            };
+
+            BuilderParams()
+            {
+                defaults();
+            };
+
+            void defaults()
+            {
+                maxMinPairMaxDist = alex::globals::max_min_pair_dist;
+                falsePositiveRate(alex::globals::default_fp_rate);
+                algo = alex::globals::default_ph;
+                loadFactor = alex::globals::default_load_factor;
+                verbose = alex::globals::default_verbose;
+                secrets = alex::globals::default_secrets;
+                maxFreq = std::numeric_limits<uint32_t>::max();
+                ignoreWords = alex::globals::default_stop_words;
+            };
+        };
+
+        void dump()
+        {
+            _freqBuilder.dump();
+            std::cout << "maxMinPairMaxDist: " << _params.maxMinPairMaxDist << std::endl;
+            std::cout << "maxDist: " << this->_maxDist << std::endl;
+            for (auto x : this->_minPairs)
+            {
+                std::cout << x.first << ", " << x.second << std::endl;
+            }
+        };
+
+        PsiMinBuilder(const BuilderParams& params) : _params(params), _maxDist(0)
+        {
+            this->_freqBuilder._ref = params.ref;
+            this->_freqBuilder._maxFreq = 0;
+            this->_freqBuilder._params.algo = params.algo;
+            this->_freqBuilder._params.verbose = params.verbose;
+            this->_freqBuilder._params.falsePositiveBits = params.falsePositiveBits;
+            this->_freqBuilder._params.ignoreWords = params.ignoreWords;
+            this->_freqBuilder._params.loadFactor = params.loadFactor;
+            this->_freqBuilder._params.maxFreq = params.maxFreq;
+            this->_freqBuilder._params.secrets = params.secrets;
+            this->_freqBuilder._params.stemming = params.stemming;
+            _params.falsePositiveBits /= 4;
+            if (_params.falsePositiveBits < 1)
+                _params.falsePositiveBits = 1;
+        };
+
+        // TODO: let block 0 be a meta-data block, no location property -> title, author, manually added keywords
+        SecureIndex build()
+        {
+            auto f = stochastic::Entropy<std::minstd_rand0>();
+            char** terms = new char*[_minPairs.size()];
+            unsigned int i = 0;
+            for (auto p : _minPairs)
+            {
+                terms[i] = new char[alex::globals::digest_size+1];
+                std::memcpy(terms[i], p.first.c_str(), alex::globals::digest_size);
+                terms[i][alex::globals::digest_size] = 0;
+                ++i;
+            }
+
+            auto psi = new PsiMin();
+
+            uint32_t sz = psi->_phMin.build(terms, _minPairs.size(),
+                                            _params.verbose, _params.loadFactor,
+                                            _params.algo);
+            psi->_freq = _freqBuilder.build();
+            psi->_hashWidth = std::max((uint32_t)1, _params.falsePositiveBits / 4);
+            psi->_maxHash = (1 << _params.falsePositiveBits);
+            psi->_hashBits.resizeBits(sz * psi->_hashWidth);
+            // psi->_hashBits.resizeBits(sz * _params.falsePositiveBits + f.getInt(0, _params.hashBitsRandomPadding))
+
+            // don't need any distbits actually, but this (inefficient) solution requires less debugging
+            if (_maxDist <= 1)
+            {
+                psi->_distWidth = 1;
+                psi->_distBits.resizeBits(sz);
+            }
+            else
+            {
+                psi->_distWidth = (uint32_t)std::ceil(std::log(_maxDist) / std::log(2));
+                psi->_distBits.resizeBits(sz * psi->_distWidth);
+            }
+            // randomize bit data -- only useful if using a non-minimal perfect hashing
+            // to obfuscate contents
+#ifdef RANDOMIZE_BITS
+            for(unsigned int i = 0; i < psi->_hashBits.bytes(); ++i)
+                psi->_hashBits.setByte(i, f.get() % psi->MAX_BYTE);
+            for(unsigned int i = 0; i < psi->_distBits.bytes(); ++i)
+                psi->_distBits.setByte(i, f.get() % psi->MAX_BYTE);
+#endif
+
+            for (const auto& p : _minPairs)
+            {
+                const uint32_t index = psi->_phMin.search(p.first);
+                const uint32_t value = alex::hash::jenkinsHash(p.first) % psi->_maxHash;
+                psi->_hashBits.set(psi->_hashWidth * index, value, psi->_hashWidth);
+                psi->_distBits.set(psi->_distWidth * index, p.second, psi->_distWidth);
+            }
+            for (unsigned int i = 0; i < _minPairs.size(); ++i)
+                delete [] terms[i];
+            delete [] terms;
+            return SecureIndex(psi);
+        };
+
+        void makeTerms()
+        {
+            _freqBuilder.makeTerms();
+            auto minPairDist = alex::utils::findMinPairs(_freqBuilder._words, _params.maxMinPairMaxDist);
+
+            for (auto x : minPairDist)
+            {
+                const auto& hs1 = _freqBuilder._terms[x.first.X()].hash;
+                const auto& hs2 = _freqBuilder._terms[x.first.Y()].hash;
+                const uint32_t minDist = x.second;
+                _maxDist = std::max(minDist, _maxDist);
+
+                for (const auto& h1 : hs1)
+                {
+                    for (const auto& h2 : hs2)
+                    {
+                        auto hash = alex::crypt::hexdigest<alex::globals::digest_size>(h1 < h2 ? h1 + "|" + h2 : h2 + "|" + h1);
+                        _minPairs.push_back(std::make_pair(std::move(hash), minDist));
+                    }
+                }
+            }
+        };
+
+        void parse(const boost::filesystem::path& file)
+        {
+            if (!boost::filesystem::is_regular_file(file))
+            {
+                throw std::exception(("Not A File: \"" + file.string() + "\"").c_str());
+            }
+            parse(file.string(), std::ifstream(file.string()));
+        };
+
+        void parse(const std::string& ref, std::istream& file)
+        {
+            _freqBuilder.parse(ref, file);
+        }
+
+        boost::filesystem::path getPreferredFileExtension() const { return PsiMin::HEADER; };
+
+        void printWords(std::ostream& outs = std::cout)
+        {
+            _freqBuilder.printWords();
+        };
+
+        void printTerms(std::ostream& outs = std::cout)
+        {
+            outs << "Freq Terms" << std::endl;
+            _freqBuilder.printTerms();
+
+            outs << "Min Pairs" << std::endl;
+            for (auto p : _minPairs)
+            {
+                outs << "Hash: " << p.first << std::endl;
+                outs << "Dist: " << p.second << std::endl;
+            }
+        };
+
+    private:
+        BuilderParams _params;
+        uint32_t _maxDist;
+        PsiFreqBuilder _freqBuilder;
+        std::vector<std::pair<std::string, uint32_t>> _minPairs;
+    };
+}}
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------
+#ifndef __PSI_MIN_H__
+#define __PSI_MIN_H__
+
+#include <iostream>
+#include <string>
+#include <ostream>
+#include "BitArray.h"
+#include "ICmph.h"
+#include "Hash.h"
+#include "Utils.h"
+#include "BinaryIO.h"
+#include <iomanip>
+#include <cstdint>
+#include "PsiFreq.h"
+#include "HiddenQuery.h"
+#include "ISecureIndex.h"
+#include "PsiFreq.h"
+#include <vector>
+
+namespace alex { namespace index
+{
+    // Perfect secure index
+    class PsiMin : public ISecureIndex
+    {
+        friend class PsiMinBuilder;
+
+        public:
+            const static uint8_t VERSION = 1;
+            const static char HEADER[];
+
+            PsiMin() : _hashWidth(0), _maxHash(0), _freq(nullptr) {};
+            PsiMin(const PsiMin& copy) :
+                _hashBits(copy._hashBits),
+                _hashWidth(copy._hashWidth),
+                _distWidth(copy._distWidth),
+                _distBits(copy._distBits),
+                _maxHash(copy._maxHash),
+                _phMin(copy._phMin),
+                _freq(copy._freq) {};
+
+            PsiMin(PsiMin&& src) :
+                _hashBits(std::move(src._hashBits)),
+                _hashWidth(src._hashWidth),
+                _distWidth(src._distWidth),
+                _distBits(std::move(src._distBits)),
+                _maxHash(src._maxHash),
+                _phMin(std::move(src._phMin)),
+                _freq(std::move(src._freq)) {};
+
+            PsiMin& operator=(PsiMin&& other)
+            {
+                if (this != &other)
+                {
+                    clear();
+
+                    _distBits = std::move(other._distBits);
+                    _hashBits = std::move(other._hashBits);                   
+                    _phMin = std::move(other._phMin);
+                    _freq = std::move(other._freq);
+
+                    _distWidth = other._distWidth;
+                    _hashWidth = other._hashWidth;
+                    _maxHash = other._maxHash;
+                    other._hashWidth = 0;
+                    other._distWidth = 0;
+                    other._maxHash = 0;
+                }
+
+                return *this;
+            };
+
+            PsiMin& operator=(const PsiMin& other)
+            {
+                if (this != &other)
+                {
+                    clear();
+
+                    _distBits = other._distBits;
+                    _hashBits = other._hashBits;
+                    _phMin = other._phMin;
+                    _freq = other._freq;
+                    _distWidth = other._distWidth;
+                    _hashWidth = other._hashWidth;
+                    _maxHash = other._maxHash;
+                }
+
+                return *this;
+            };
+
+            std::map<std::pair<HiddenQuery::HiddenTerm, HiddenQuery::HiddenTerm>, int> getMinPairWiseDistances(const HiddenQuery& q) const
+            {
+                std::vector<HiddenQuery::HiddenTerm> present;
+                for (const auto& t : q.terms)
+                {
+                    if (t.size() > 1)
+                    {
+                        // size == 1, then may be a unigram or bigram (bigram is a two word exact phrase)
+                        // min pair distance measures on this works fine -- in theory, although here i
+                        // won't be including the distance between two different bigrams, so if a term
+                        // of size 1 is a bigram, it won't be found in the min index.
+                        // but if size > 1, then it is a trigram or larger (three or more word exact phrase) -- proximity queries
+                        // on these are not supported. thus, the decision here is to ignore it.
+                        //
+                        // we don't actually ignore it when computing the getMinPairwiseDistScore, but
+                        // this is a diagnostic function where i want to see "real" values more than
+                        // estimated values.
+                        continue;
+                    }
+
+                    if (_freq->contains(t)) // in min pairs, only consider existent terms in the doc
+                        present.push_back(t);
+                }
+
+                const std::string& suffix = "|" + _freq->getReference();
+                std::map<std::pair<HiddenQuery::HiddenTerm, HiddenQuery::HiddenTerm>, int> pairs;
+                for (size_t i = 1; i < present.size(); ++i)
+                {
+                    for (size_t j = 0; j < i; ++j)
+                    {
+                        const auto& x1 = alex::crypt::hexdigest<alex::globals::digest_size>(present[i][0] + suffix);
+                        const auto& x2 = alex::crypt::hexdigest<alex::globals::digest_size>(present[j][0] + suffix);
+                        std::string p = (x1 < x2 ? 
+                                         x1 + "|" + x2 :
+                                         x2 + "|" + x1);
+
+                        const std::string& q = alex::crypt::hexdigest<alex::globals::digest_size>(std::move(p));
+                        const uint32_t idx = _phMin.search(q);
+                        const uint32_t value = alex::hash::jenkinsHash(q) % _maxHash;
+
+                        if (_hashBits.get(_hashWidth * idx, _hashWidth) == value)
+                            pairs[std::make_pair(present[i], present[j])] = _distBits.get(_distWidth * idx, _distWidth); // pair exists
+                        else
+                        {
+                            // expected distance between two randomly chosen points in the interval 0, approximate_words-1.
+                            pairs[std::make_pair(present[i], present[j])] = getApproximateWords() / 3;
+                        }
+                    }
+                }
+                return pairs;
+            }
+
+            double getMinPairwiseScore(const HiddenQuery& q) const
+            {
+                const std::string& suffix = "|" + _freq->getReference();
+
+                std::vector<std::string> evaluateInPairs;
+                for (const auto& t : q.terms)
+                {
+                    if (_freq->contains(t)) // in proximity, only consider existent terms in the doc
+                    {
+                        if (t.size() == 1)
+                            evaluateInPairs.push_back(t[0]);
+                    }
+                }
+
+                double sum = 0;
+                for (size_t i = 1; i < evaluateInPairs.size(); ++i)
+                {
+                    for (size_t j = 0; j < i; ++j)
+                    {
+                        const auto& x1 = alex::crypt::hexdigest<alex::globals::digest_size>(evaluateInPairs[i] + suffix);
+                        const auto& x2 = alex::crypt::hexdigest<alex::globals::digest_size>(evaluateInPairs[j] + suffix);
+                        std::string p = (x1 < x2 ? 
+                                         x1 + "|" + x2 :
+                                         x2 + "|" + x1);
+
+                        const std::string& q = alex::crypt::hexdigest<alex::globals::digest_size>(std::move(p));
+                        const uint32_t idx = _phMin.search(q);
+                        const uint32_t value = alex::hash::jenkinsHash(q) % _maxHash;
+
+                        if (_hashBits.get(_hashWidth * idx, _hashWidth) == value)
+                            sum += _distBits.get(_distWidth * idx, _distWidth); // pair exists
+                    }
+                }
+
+                return sum;
+            };
+
+            double getMinPairwiseScore_old(const HiddenQuery& q) const
+            {
+                // NOTE: i need to redo this. all of those comments made me realize
+                // my math is actually pessimistic. the average distance between N
+                // pairs of points is L/(N^2-1), but i have it at L/3, insensitive
+                // to N. For N = 2, average distance between two points, we get
+                // L/(2^2-1)=L/3 as expected, but if N=3, L/(3^2-1) = L/8,
+                // and so on.
+                //
+                // if have time, will redo. but it's not that important.
+
+                const std::string& suffix = "|" + _freq->getReference();
+
+                std::vector<std::string> evaluateInPairs;
+                int k = 0;
+                for (const auto& t : q.terms)
+                {
+                    if (_freq->contains(t)) // in proximity, only consider existent terms in the doc
+                    {
+                        if (t.size() > 1)
+                        {
+                            // if size == 1, then it may be a unigram or bigram (bigram is a two word exact phrase)
+                            // min pair distance measures on this works fine -- in theory, although here i
+                            // won't be including the distance between two different bigrams, so if a term
+                            // of size 1 is a bigram, it won't be found in the index.
+                            // but if size > 1, then it is a trigram or larger (three or more word exact phrase) -- proximity queries
+                            // on these are not supported by PsiMin. Thus, the decision here is to
+                            // assume that it will be randomly dsitributed somewhere in the document
+                            // thus the expected distance between such a term and any other term
+                            // is document_length / 3. we will assume this.
+                            //
+                            // if all terms are phrases, then all pairs will be L/3.
+                            // that is, L*(t-1)/6, after normalizing by t matched terms.
+                            // let's keep track of matching terms that can't be used
+                            // in min pair wise calcs, call it k.
+                            //
+                            // in the end, we'll return sum of pairwise distances
+                            // plus Lk*(e+k-1)/6, where e+k is total matched terms.
+                            // if e = total, then k = 0 and this becomes zero.
+                            // if e = 0, then Lk(k-1)/6, which is what we had
+                            // above (all pairs will be L/3). it works for everything
+                            // in between also.
+                            ++k;
+                        }
+                        else
+                            evaluateInPairs.push_back(t[0]);
+                    }
+                }
+
+                const double L = getApproximateWords();
+                // if only one term is matched in a multi-term query,
+                // then return the length of the document.
+                if (evaluateInPairs.size() + k <= 1)
+                    return L;
+
+                double sum = 0;
+                int k2 = 0;
+                for (size_t i = 1; i < evaluateInPairs.size(); ++i)
+                {
+                    for (size_t j = 0; j < i; ++j)
+                    {
+                        const auto& x1 = alex::crypt::hexdigest<alex::globals::digest_size>(evaluateInPairs[i] + suffix);
+                        const auto& x2 = alex::crypt::hexdigest<alex::globals::digest_size>(evaluateInPairs[j] + suffix);
+                        std::string p = (x1 < x2 ? 
+                                         x1 + "|" + x2 :
+                                         x2 + "|" + x1);
+
+                        const std::string& q = alex::crypt::hexdigest<alex::globals::digest_size>(std::move(p));
+                        const uint32_t idx = _phMin.search(q);
+                        const uint32_t value = alex::hash::jenkinsHash(q) % _maxHash;
+
+                        if (_hashBits.get(_hashWidth * idx, _hashWidth) == value)
+                            sum += _distBits.get(_distWidth * idx, _distWidth); // pair exists
+                        else
+                        {
+                            // if not found in distBits, then the two terms
+                            // are farther apart than the maximum minimum
+                            // pairwise distance to record -- in this case,
+                            // assume the two words are chosen at random,
+                            // as before, so expected distance of L/3.
+                            sum += L / 3;
+                        }
+                    }
+                }
+
+                // normalize by number of matched terms
+                // more matches means larger sums, so let's
+                // not penalize that. there are other
+                // ways to normalize this, but this seems
+                // good enough.
+                //
+                // this looks a little complicated, but math
+                // has been worked out. other papers propose
+                // something like this, but they didn't have to
+                // deal with the fact that some matching terms
+                // can't be calculated in min pairs, which is
+                // why i add the L*k*(e+k-1)/6, then normalize the whole
+                // thing by number of matched terms, e+k.
+                //
+                // if only one term is matched, e+k-1=0, so
+                // this formula doesn't work for that. in this case,
+                // i return L, as mentioned earlier.
+                //
+                // if k>1 matches, but both are either phrases
+                // or beyond max min dist, then this becomes L/6.
+                // that's better than L. i wonder if it's TOO
+                // much better though?
+                //
+                // either way, for most documents, this won't matter
+                // much becaomse L will be much larger than 6,
+                // and the function we pass the distance into to get
+                // a proximity score will flatten out (asymptotically)
+                // very quickly. but for small documents, this does
+                // match the idea that if two or more terms are
+                // present, they'll be pretty close even if we
+                // can't do an actual min pairwise calculation and
+                // must resort to expected pairwise distances.
+
+                int t = k +- k2;
+                int e = evaluateInPairs.size() - k2;
+                
+
+                return (sum + L*k*(e + t - 1) / 6) / (e + t);
+
+                //return (sum + L*k*(evaluateInPairs.size() + k - 1) / 6) / (evaluateInPairs.size() + k);
+            };
+
+            void read(std::istream& file)
+            {
+                using namespace alex::io::binary;
+
+                const std::string& hdr = readString(file);
+                if (hdr != HEADER)
+                    throw std::exception(("Unexpected Header: " + hdr).c_str());
+
+                unsigned int version = readU8(file);
+                if (version != VERSION)
+                    throw std::exception("Unexpected Version");
+
+                if (_freq == nullptr)
+                    _freq = SecureIndex(new PsiFreq);
+                else
+                    _freq->clear();
+                _freq->read(file);
+
+                // get hash of encrypted document
+                // _refHash = readString(file);
+
+                // de-serialize perfect hash function
+                _phMin.read(file);
+
+                // read hash entries
+                _hashWidth = readVarU32(file); // get number of bits per hash entry (false positive rate = 1/2^width)
+
+                _maxHash = (1 << _hashWidth); // derive maximum hash value from fp bits
+
+                readBitArray(file, _hashBits); // read bit array for compactly (packed) storing hash entries
+
+                // read frequency entries
+                _distWidth = readVarU32(file);
+
+                readBitArray(file, _distBits);
+            };
+            void write(std::ostream& file)
+            {
+                using namespace alex::io::binary;
+
+                writeString(file, HEADER);
+                writeU8(file, VERSION);
+
+                _freq->write(file);
+
+                // write hash of encrypted document
+                // writeString(file, _refHash);
+
+                // serialize perfect hash function
+                _phMin.write(file);
+
+                // write hash entries
+                writeVarU32(file, _hashWidth);
+
+                // write bit array for compactly (packed) hash entries
+                writeBitArray(file, _hashBits);
+
+                // write block data
+                writeVarU32(file, _distWidth);
+                writeBitArray(file, _distBits);
+            };
+            virtual ~PsiMin() { clear(); };
+
+            void dump(int depth = 0)
+            {
+                std::cout << std::setw(depth) << "" << "PsiMin" << std::endl;
+                _freq->dump(depth+1);
+                std::cout << std::setw(depth) << "" << "distWidth: " << _distWidth << std::endl;
+                std::cout << std::setw(depth) << "" << "hashWidth: " << _hashWidth << std::endl;
+                std::cout << std::setw(depth) << "" << "maxHash: " << _maxHash << std::endl;
+                std::cout << std::setw(depth) << "" << "hashBits:" << std::endl;
+                _hashBits.dump(depth+1);
+                std::cout << std::setw(depth) << "" << "distBits:" << std::endl;
+                _distBits.dump(depth+1);
+                std::cout << std::setw(depth) << "" << "phMin:" << std::endl;
+                _phMin.dump(depth+1);
+            };
+
+            void clear()
+            {
+                if (_hashBits.size() != 0)
+                {
+                    _distWidth = 0;
+                    _hashWidth = 0;
+                    _maxHash = 0;
+                    _hashBits.clear();
+                    _distBits.clear();
+                    _phMin.clear();
+                    _freq->clear();
+                }
+            };
+            unsigned int getApproximateWords() const { return _freq->getApproximateWords(); };
+            bool hasFrequency() const { return true; };
+            bool hasProximity() const { return true; };
+            TSecureIndex getType() const { return TSecureIndex::PsiMin; };
+            void read(const boost::filesystem::path& infile)
+            {
+                read(std::ifstream(infile.string(), std::ios::binary));
+            };
+            void write(const boost::filesystem::path& infile)
+            {
+                write(std::ofstream(infile.string(), std::ios::binary));
+            };           
+            unsigned int getFrequency(const alex::index::HiddenQuery::HiddenTerm& t) const
+            {
+                return _freq->getFrequency(t);
+            };
+            bool contains(const alex::index::HiddenQuery::HiddenTerm& t) const
+            {
+                return _freq->contains(t);
+            };
+            bool containsAny(const alex::index::HiddenQuery& q) const
+            {
+                return _freq->containsAny(q);
+            };
+            bool containsAll(const alex::index::HiddenQuery& q) const
+            {
+                return _freq->containsAll(q);
+            };
+            std::string getReference() const
+            {
+                return _freq->getReference();
+            };
+            void setReference(const std::string& ref)
+            {
+                _freq->setReference(ref);
+            };
+            std::string toString() const
+            {
+                std::stringstream ss;
+                ss << _freq->toString() << std::endl;
+                for (unsigned int i = 0; i < _hashBits.size() / _hashWidth; ++i)
+                {
+                    ss << std::right << std::setw(8) << i << " -> hash={";
+                    for (unsigned int j = 0; j < _hashWidth; ++j)
+                       ss << _hashBits.getBit(i * _hashWidth + j);
+                    ss << "} :: dist=" << _distBits.get(i * _distWidth, _distWidth) << std::endl;
+                }
+                ss << std::endl;
+                return ss.str();
+            };
+            std::string getPreferredFileExtension() const { return HEADER; };
+
+        private:
+            static const unsigned int MAX_BYTE = (1 << CHAR_BIT);
+        
+            alex::hash::ICmph _phMin;
+
+            uint32_t _maxHash;
+            alex::collections::BitArray _hashBits;
+            uint32_t _hashWidth;
+
+            alex::collections::BitArray _distBits;
+            uint32_t _distWidth;
+
+            SecureIndex _freq;
+    };
+
+    const char PsiMin::HEADER[] = "psim";
+}}
+
+#endif

@@ -1,0 +1,18 @@
+min_query_terms 6
+max_query_terms 6
+min_term_tokens 1
+max_term_tokens 1
+obfuscations 0
+mindist
+label bsib
+	avg_query_lag_time 0.0847
+	map 0.2755
+label psib
+	avg_query_lag_time 0.0819
+	map 0.322067
+label psim
+	avg_query_lag_time 0.1452
+	map 0.269753
+label psip
+	avg_query_lag_time 0.0341
+	map 0.506884

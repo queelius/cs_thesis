@@ -1,0 +1,10 @@
+false_positive_rate 0.000976563
+load_factor 1
+max_freq 4294967295
+algo 0
+psif
+	 index_size	16334381
+	 build_time	48266
+	    indexed	1000
+	       path	psif2\1000_8000_256_2_1_0_0.001\2\corpus_indexed\psif
+	  load_time	287

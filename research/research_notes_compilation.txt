@@ -1,0 +1,1182 @@
+experiment workflow:
+	devise a corpus
+		total unique words (or unspecified)
+		unique words per document (or unspecified)
+			sampled from {total unique words}
+		trigram distribution on the unique words
+
+
+
+corpus generator
+
+	document generator
+
+		input params:
+			k-gram distribution
+			word distribution
+
+	query set generator
+
+		input params:
+
+			k-gram distribution
+			word distribution
+
+	k-gram (phrase) distribution generator
+
+		desc: make a distribution for k-grams
+
+		input params:
+
+			word distribution
+
+	word distribution generator
+
+		desc: make a distribution for words
+
+==========================
+Spectral Bloom filters (multiset)
+Can be used for word frequencies; no example of its usage in the encrypted searching literature.
+
+Word frequencies are important for relevancy measures. The frequencies can represent a range, instead of an exact value, to reduce information leakage and space complexity.
+Classical (set)
+Space-Code Bloom Filter (multiset)
+Space-Code Bloom Filter for Efficient Per-Flow Traffic Measurement
+
+=========================
+arguments:
+
+for making indexes:
+
+	program: make_si
+
+		--config filename
+		--type {psib, psif, psip, psim, bisb, bsif}
+		--block_size=n
+		--max_blocks=n
+		--max_freq=n
+		--psip_radius_uniform=d
+		--psip_radius_pdf=filename
+		--psip_radius_uniform_pdf=-12 -6 -3 0 3 6 12
+		--noise_ration=percentage
+		--false_positive_rate=d
+		--verbose
+		--secrets=secret_1 "secret phrase 2" ... secret_n
+
+for making query sets:
+
+	--secrets=secret1 secret2 ... secretn
+	--verbose
+	--obfuscations=0,1,...
+
+for querying secure database:
+
+	--verbose
+	--db="base_path"
+		NOTE: just a set of indexes
+		NOTE: in base path, a config file will specify parameters like wether these secure indexes
+			  used stemming and which stop words they used
+	--timelag
+	--stop_words=filename	NOTE: ideally use same stop word list as was used in making the secure indexes
+	--porter_stemming		NOTE: only use stemming if the secure index also used stemming
+	--query="this is phrase 1" "this is phrase 2" keyword1 keyword2
+	--query_set=query_set_filename
+
+	ONE OF:
+	--bm25 k1=1.2 b=0.75
+	--min_pair_distances
+	--min_pair_score
+	--frequency				NOTE: if multiple terms per query, show results for each
+	--locations				NOTE: if multiple terms per query, show results for each
+
+
+TO-DO:
+	implement	PsiMin
+				PsiPost
+				FUTURE WORK: BsiFreq
+				sensible combos
+				use getHeader
+
+test params:
+
+	FUTURE WORK: unigram, bigram, trigram, ..., k-gram (best for frequency-only structures like PsiFreq: space compact and need extra assurance of larger n-grams
+	to avoid false positives)
+
+	query obfuscation: how is MAP/lagtime/filesize/memory consumption affected by (a) secret concats added, (b) noise terms added
+
+	how does loading factor affect output? (MAP, file size, ...)
+
+other notes:
+
+	if a document has multiple SecureIndex files -- what to do in response to a query?
+		* use the most accurate secure index for relevancy (which may be difficult to define, except in cases where the same secure index type is used
+			for each one and the only differences are params like words per block)?
+		* use the average relevancy?
+			or use a weighted linear combination of them?
+		* use the min relevancy?
+		* use the max relevancy?
+		* use the fastest?
+		--- no single right answer: this is a trade-off question
+
+	FUTURE WORK: provide complete interface for: adding secure indexes, removing secure indexes, checking that secure indexes are up to date, making
+		sure the secure index in a db still has a legitimate/valid reference (e.g., does the reference still exist?)
+			*** all of this stuff is easier if you assume the encrypted docs (which are being referred to in the secure index) are also in the database,
+				but it may be the case that you wish to use separate remote databases for the secure indexes and the encrypted docs for security reasons.
+
+	FUTURE WORK: non-local block 0: make block 0 in block-based secure indexes a "nonlocal" (things in it imply nothing about position) container. so,
+		keywords/phrases (e.g., email:queelius@gmail.com) can be inserted into it, etc. on the query end, inform the
+		query processor that this such "terms" should not be modified, e.g., do not break them down into biwords, do
+		not stop-word them, do not stem them, etc.
+		FUTURE WORK: make an "embeddable" schema to tell document processor how to handle certain tags, e.g.,
+			if comes across tag <ignore>...</ignore>, do not add the "..." to secure index
+			if comes across tag <soundex>...</soundex>, add soundex of term
+			if comes across tag <variations>this is variation 1; this is also a variation; ...</variations>
+				example for synonym use: <variations>cat; lion; tiger</variations>
+					NOTE: using a natural language processor, stuff like this can be automatically done in a preprocessing step
+					--- however, this will inflate secure index size
+					--- another solution is to to preprocess the queries (query expansion)
+			if comes across tag <exact>this whole exact phrase is inserted into it</exact>, then at that exact phrase (not using biword model) to index,
+				and no stemming, no stopword removal, etc is done on it even if stemming/stopword removal is specified
+			if comes across tag <keyword>term1; <exaxt>this is an exact keyword phrase</exact>; hello world</keyword>
+				keyword terms are "non-local", they don't factor into proximity scores, only term weighting.
+					they can be given a manual weight: <keyword>term1<weight>1000</weight>; ...</keyword>
+
+	Experiment:
+
+		- loadExperiment(Experiment stream)
+
+		- run(numTrials)
+
+		- stats:
+
+			- how long does it take to construct Secure Indexes of Corpus?
+			- look into Valgrind to examine how much memory is being used by program
+				http://valgrind.org/
+				*** often it should be close to the file size (for some of the indexes), so maybe just focus on that instead
+			- mean average precision
+			- average (lag) time to service a query
+				-> average time to service a query normalized by number of secure indexes to process
+				-> record properties like how many terms per query, how many words per term, etc.
+			- Mean average precision
+			- recall
+			- precision
+
+	ExperimentBuilder -> Experiment
+
+		setRelevancyScoring(type)
+
+			- Proximity scoring: { none, minimum pair-wise distance }
+			- Keyword/term weighting: { none, bm25 }
+
+		setReferenceIndex - type of nonsecure index to use as reference { InvertedIndex }
+
+		setSecureIndexBuilder(ISecureIndexBuilder)
+
+			- ISecureIndexBuilder is an interface implemented for:
+				PsiBlock, PsiFreq, PsiPost, PsiMinPair, BsiBlock
+				It is processed by a ISecureIndexBuilder over a Corpus
+
+		setCorpus(Corpus)
+
+		setQuerySet(QuerySet)
+
+	CorpusBuilder -> Corpus
+
+		- setOutputDirectory(path)
+
+		- addInputDirectory(path, label=none)
+
+			* different "classes" of corpus/directories, e.g., public domain books, medical texts, genomic data
+
+		- setProperties(properties)
+
+			* properties include: repeats (by filename) = false (in final build), recursive = true, file pattern = *.*, number to get n,
+				distribution: "file properties" -> probability (discrete distribution)
+
+		- build()
+
+			* from the set of input directories (and the global properties -- allow local per directory properties?), 
+				add filenames to a a list
+
+		- getStatistics() -> CorpusStatistics: total words
+
+		- write(outstream)
+		- read(instream)
+
+		- getCorpus() -> Corpus [list of filenames]
+
+		- getOutputDirectory()
+		- getInputDirectories()
+		- getProperties()
+
+	QuerySetBuilder -> QuerySet
+
+		- how many words per query term?
+		- how many query terms?
+		- how much obfucation?
+		- how many secret concats?
+
+		- build()
+
+
+
+TODO: find out if InvertedIndex is finding stuff correctly; find out if others are also!
+
+
+
+verification:
+
+	use a simple doc to check that PsiBlock and BsiBlock result in same (approximately) measurements for equal sized words per block, etc.
+
+
+
+
+
+	in the is to am im a an and are as for of no by was his at which with this on her he be that then than him from or to but where not were
+it have had been who has we may can if i its their these theyre youre your
+
+
+
+
+!!!!!!!!!!!!!!!!!!!!! Lorem Ipsum generator. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+
+\b(in|the|is|to|am|im|a|an|and|are|as|for|of|no|by|was|his|at|which|with|this|on|her|he|be|that|then|than|him|from|or|to|but|where|not|were)\b
+=====================================================
+
+basic gradient descent approach.
+
+---------------------------------------------------------------
+input:
+
+	partition:
+	
+		a starting query partition (set of sets), e.g., for a k-query, which
+		is a k-gram, it could be a k partitioning with a 1-gram in each one:
+			{{ q1 }, { q2 }, ..., { qk }}
+		
+		or it could be any other exhaustive partitioning, e.g.:
+			{{ q1, q3}, { q2, q4, q7}, ..., { qk, q6, q5, q10}}
+		
+	measures:
+		four measurement functions, each of which take in the partition:
+		
+			(1) one for locality metrics: measure of how displaced the k
+			sets in the partition are.
+			
+			(2) one for arrangement metrics: measure of how distant the query's
+			arrangement (sequence of 1-grams) is from the closest approximate
+			match in the bloom filter.
+			
+			(3) one for character metrics: a measure of how edit distance, e.g.,
+			how many edits had to be made to it to have it match?
+			
+	neighbors:
+		a function which returns some neighbors of the input. a lot of
+		pruning/approximation/randomization can be done here.
+	
+	steps:
+		maximum number of steps to take
+		
+---------------------------------------------------------------
+greedy_find_minimum(partition, measures, neighbors, steps) -> a solution
+
+	"Search for a query partition+transformation on query that minimizes
+	 measures(partition), considering neighbors of partition."
+	 
+	distance = measures(partition)
+	neighborhood = neighbors(partition)
+	for i = 1 to steps
+		neighbor_partition = extract a neighbor from the neighborhood
+		distance2 = measures(partition)
+		if distance2 <= distance:
+			partition, distance = neighbor_partition, distance2
+			neighborhood = get_neighbors(partition)
+	
+	return {partition, distance}
+---------------------------------------------------------------
+	
+many things can be done to this template. for instance, to prevent expending
+a lot of work on already visited states, use a visited set (this could even
+be a bloom filter to keep space consumed by it low).
+
+we can also do random restarts to get out of local minima, and this is an
+embarassingly parallel problem: every call to greedy_find_minimum is
+independent.
+	
+Algorithm:
+
+Search query with N-terms (words) is called an N-query.
+
+First, see if N-query is an exact match. Return perfect match if so.
+
+Otherwise:
+
+	For each word in N-query, make k tables, one for each word which has either
+	an exact 1-gram match or an approximate, 1-error 1-gram match.
+	
+	Fill the table for each word with the 0-error and 1-error approximations,
+	in ascending order of errors. (So, if any 0-error matches, those will be
+	on top.)
+	
+	(The 1-error nodes can actually be constructed lazily later on, but doing it
+	upfront keeps things simpler for now. 2-error ones, if desied, can be
+	constructed later as needed also -- if we want to allow 2 edit errors.)
+	
+	NOTE: If k < N, that means some of the terms in the query weren't matched,
+	neither exactly nor approximately. This means we can only do a submatch of
+	those k terms out of a total of N terms. This imposes what is called a
+	submatch cost. The cost of a submatch with (k-1) out of N terms but otherwise
+	matches those (k-1) terms exactly (perfect (k-1)-gram match on a bloom filter that
+	with (k-1)-gram granularity) is greater than a submatch with k terms
+	but with the maximum error possible on permutation+displacement+character
+	error. So, we can ignore any possible submatches less than k, which simplifies
+	code and allows us to avoid a combinatorial explosion by not having to
+	explore all of the subsets of those k-terms, for which there are 2^k,
+	multiplied by all of the permutation and displacement and character error
+	combinations this becomes untenable probably.
+		
+	So, we're just going to try to find a k-term submatch and nothing less than
+	k. This will immediately impose a submatch approximation error (which can
+	be quite high since it is the biggest penalty of the various types of
+	approximatione errors).
+	
+	Now, let's try to match an approximate k-term query. First, we try
+	edit errors. Since we have a sorted table of these, we can explore it
+	from least costly to most costly, e.g., if we have k words, word 1 has 3
+	variations, word 2 has 4, ..., word k has 2, then we will have to try
+	3*4*...*2 variations. With only 1-edit errors, this list is likely to be
+	manageable. If it's a problem, the table for each word can have a maximum
+	number of entries before it stops making variations for that word.
+
+	
+	let D be all the partitions of the k-query, e.g., if it is a 3-query =
+		{a b c}, then we have {{a b c}}, {{a b}, {c}}, {{a c}, {b}},
+		{{b c}, {a}}, and {{a}, {b}, {c}}. Sort them according to the fewest
+		set of sets. Maintain the order of elements in each set, but notice
+		that in sets like {{a c}, {b}}, {a c} are now adjacent but aren't
+		in the original {a b c} k-query. This counts as a unit of displacement
+		which is added into its approximation cost. Note: number of set of
+		sets follow the Bell numbers, 1, 1, 2, 5, 15, 203, 877, 4140 (for an
+		8-query), 21147, ... grows quite quickly as you can see. and, that's
+		not considering the fact that we will permute them, 1-edit error
+		them, etc.
+		
+		however, if we only support up to k-grams, we are only worried about
+		creating sets of sets for which their largest set member is size k or
+		less. so, even if a user enters a really large query, it won't explode
+		to some unreasonable number unless we have a very large n-gram granularity.
+		i'm thinking the biggest n-gram in our bloom will be 3. so, that's
+		certainly tenable.
+		
+		that said, a better approach, i think, is to use a randomzied algorithm.
+		that eliminates virtually all of the complexity, simplfies the math,
+		allows us to use less constrained functions for everything, lets us
+		do a lot more for a lot less. however, if exhaustive is what we need,
+		this is what we could do (and short-circuit asap).
+	
+	for m = 1 to k
+	
+		let Q be a list of the set of sets with m sets.
+		
+		for each q' in Q
+	
+			let P be all permutations of q' in the order of increasing
+				inversion count, e.g., if q' = {{a c}, {b}}, then ordered
+				permutations are (a c, b), and (c a, b).
+			
+			for each p' in P
+			
+				let A be all possible 1 edit errors in the k terms (character
+					approximation error, sorted in increasing error
+						*** note: the 1-edit errors per word can be in a look up table,
+							and only those for which at least the 1-gram edit version of
+							it found a match -- if it didn't, no n-gram, n > 1, can
+							possible have a 1-edit error match. should save a lot of
+							time.
+				
+				for each a' in A
+				
+					are all the 1-edit error x-grams (max size of x depends on m) in a' a match?
+					
+						let error = a'.character_approximation_error +
+							p'.permutation_approximation_error +
+							submatch_approximation_error
+
+	should not get here, since all k terms (out of the N terms from the original
+	query) are present. At the very worst, the set of D with k sets will have
+	a match.
+	
+	
+	
+	
+	---
+	
+	
+	
+		
+	
+
+===================================
+
+prelimary research. also, implemented these ideas. code is available if you desire, although
+it has a circular dependency i need to resolve before it compiles.
+
+I did a little bit of research last night on encrypted searching. I learned that, one way to do this
+is to input the message into a bloom filter, in some way, and send it along with the encrypted
+message to facilitate searching.
+
+- designed and implemented a solution to searching substrings of the message, call it Q
+	- preprocess message: output message Q'
+		- strip nonalphanumeric characters and extra whitespace
+		- Q of size N -> smaller Q' of size M < N
+		- makes searching substrings more reliable against slight variations and reduces
+			space complexity of next step
+	- construct all possible subsequences of Q'
+		- there are M^2 / 2 subsequences, so quadratic space complexity in size of preprocessed
+		message Q'
+	-
+	
+		
+- problems
+	- quadratic space complexity (M^2/2) is not ideal, especially since size of Q' = M can be very
+	large
+		- if there are 10^n words, then there are (10^n)^2 = 10^(2n) / 2 subsequences.
+		- to avoid having too many false positives, size of bloom filter will need to scale with
+		the number of subsequences M^2/2 in some way
+			- more research needed to determine how it scales
+				- preliminary research on this
+					- auto-tune hash functions by doing some sort of hill climbing algorithm
+					to search through parameter space of some basic hash functions and other
+					bloom filter properties
+						- possible paramters:
+							* number of hash functions
+							* types of hash functions
+							* for a given hash function, vary parameters for it
+								- prime coefficient, seed prime, etc.
+						- i implemented a basic strategy for this where i constructed a variable
+						number of hash functions, and varied the prime coefficient and
+						seed prime for a single type of hash function, then constructed the
+						bloom filter based on these parameters and the given bloom filter members.
+						i then performed trial runs where i counted the number of false positives on
+						an exhaustive or random sample of the message space. i did this for N
+						different exhaustive or random parameter configurations and chose the one
+						that performed the best
+							- NOTE: this sort of autotuning is expensive, and there are definitely
+							better ways to converge to ideal solutions
+								- i think the best approach would be to implement a genetic
+								algorithm -- i'm doing it completely randomly instead of selecting
+								the best from an (initially random) population and slightly varying
+								them to produce "offspring", rince and repeat
+									- this would have much faster convergence if done right
+	
+							- NOTE #2: if the set members change, then at some point the bloom
+							filter's hash functions could become poor (far from optimal). so,
+							depending on how frequently these changes occur, the frequency of
+							autotuning may need to vary (since autotuning incurs an execution
+							cost)
+							
+							- typically, for the problems i gave it, a single hash function ended
+							up being the best performer, but my sample spaces were probably
+							atypical
+								- i also did a exhaustive tests, but this is not realistic since
+								only a small subset of the messages should be, in practice, tested
+								for membership. that is to say, the distribution of messages from
+								which a test for membership will be performed on is not a uniform
+								distribution -- i should therefore not weigh failures on unlikely
+								messages the same as failures on likely messages
+					
+	- hash functions which generated bloom filter must be shared
+		- does this give people any information, e.g., P(decrypted(c) = m | 
+		
+
+	- thought: posession of the bloom filter/hash compromises the contents of the plaintext.
+	that is, P[m = m* | hash = hash* and bloom = bloom*] > p[m = m*]. in a perfect system, it would
+	tell us nothing, that is P[m = m* | hash = hash* and bloom = bloom*] = p[m = m*]. but clearly, this
+	defeats the purpose of being able to search the document.
+
+		we want them to be able to easily determine if there are aproximate substrings matches.
+		the question is, from this, how difficult is it for someone recreate the entire message
+		without knowing anything about the contents of the message other than being able to inspect
+		and query a bloom filter. by constructing a large set of substrings, it seems possible
+		to recreate a lot of the messagee content fairly quickly. this is much easier than, say,
+		exhaustively exploring a large key space to try to determine which of the decodings are
+		reasonable.
+		
+	- doesn't handle partial word searches
+		- one way to do partial word searches is to operate at the character level rather than
+		word level
+			- unfortunately significantly increases space complexity
+				- if average word size in Q' is K and it has M words, then space complexity of
+				all subsequences is (M*K)^2 / 2 = K^2 * (space complexity of word-level approach)
+				
+	- doesn't handle searching on slight rearranagments (permutations) of substrings, e.g., if Q' =
+	"hello world" then doing a search for "World Hello" will not be found. one way to address this
+	is to either permute Q' or the substrings the user wants to search for (space-complexity-wise,
+	it seems preferrable to permute the substring the user wants to search for on the reasonable
+	assumption that such a substring is expected to be much smaller than the message Q'), but
+	permute them in what ways? if you do a total permutation on Q' itself, then (a) space complexity
+	is intractable, and (b) its an extremely inefficient way of just doing a test to see if each
+	word in the substring to be	searched for is a member of the set. so, more likely, local
+	permutations would be more reasonable, e.g., "hello, world. how are you?" preprocesses to "hello
+	world how are you". then, a local permutation may, for each position i, i+1, ..., i+k, permute
+	those and insert them into the bloom filter. this particular example would "only" increase the
+	size of the subsequences by a factor of (k+1)!, e.g., swapping only adjacent positions where
+	k = 1 would only increase it by a factor of 2.
+		- now, doing a search for "World, hello!" would find a match in the message "Hello, world"
+		if we let k >= 1.
+		
+==========================
+most existing techniques don't work well with encrypted search
+
+(1) can't use cloud storage provider to index document store; it's not trusted
+(2) since document store can be quite large, if a central index is used, this
+must still be a secure index, and so the user must modify this central secure
+index to, for instance, include a new document.
+2a) what if user doesn't have access to every doc in the document
+store? i.e., tiered security or decentralized security
+(3) seems more reasonable to have each secure index be a
+separate file (or attached to its encrypted doc). user must construct secure
+index, but only needs to construct index for that particular doc.
+(4) searching, then, is separately (independently) probing each secure index
+that user has permissions for (secure index secured by a public key, so to
+access must have private key) and doing IR on those.
+
+term proximity weighted search
+------------------------------
+
+proximity_factor(d, query)
+    terms <- get_terms(query)
+    doc_terms <- terms in d
+    min_interval_size <- min(MAX, num(blocks(d) - 1)
+    
+    for i <- 1 to num(blocks(d))
+        ts <- doc_terms
+        j <- i
+        while ts is not empty and j <= min_interval_size
+            for t in ts
+                if t in block(d, j)
+                    remove(t, ts)
+            j <- j + 1
+        
+        min_interval_size <- min(min_interval_size, j - i)
+        
+    if min_interval_size > MAX
+        return 0
+    
+    return f(min_interval_size)
+    ; note: f is a function that maps an integer to [0, 1], like:
+    ;
+    ;           alpha^min_interval_size
+    ;
+    ;       where alpha is a constant s.t. 0 < alpha < 1
+    
+    
+; naive; in implementation, make a table and do this for every query term
+; against doc store thus constructing a document matrix on the fly, or offline
+; if security model is relaxed
+tf(d, term)
+    term_count <- 0
+    for each b in blocks(d)
+        if contains(b, term)
+            term_count <- term_count + 1
+        
+    return term_count
+    
+df(D, term)
+    doc_count <- 0
+    
+    for each d in D
+        for each b in blocks(d)
+            if contains(b, term)
+                doc_count <- doc_count + 1
+                break
+    
+    for each t in d_terms
+        score <- score + tf(t, d) * idf(t, D)
+   
+
+score(d, D, query)
+doc_terms <- terms in d
+
+
+    score
+    return proximity_factor(min_interval_size) * term_score(d, query)
+
+====================
+If the ability to count multiplicities is desired, this is easily accomplished
+by using the minimum perfect hash to index into another vector consisting of r
+bits per element, which can represent 2^r discrete values. For example, for
+r = 2, four unique values can be represented. Thus, if it is desired to track
+the multiplies of terms in an encrypted document, these four discrete values
+can either map to direct frequency counts from 1 to 4, or they can map to four
+ordinal values, e.g., {“only one”, “between two and four”, “between five and 
+ten”, “more than ten”}. 
+
+There are, however, some disadvantages with respect to the Bloom filter index.
+First, the Bloom filter may leak less information in some respects since there
+is no possibility of collisions between members in a MAS. Each member, however, 
+does collide with 2^m-1 non-members, where m is the number of bits allocated to 
+represent each member and m is determined by the desired false probability rate, 
+e=1/2^m.
+
+====================
+array permute(n)
+{
+    array result
+    for i <- 0 to n-1
+        j = uniform(i)
+        result[i] = result[j]
+        result[j] = i
+    }
+    
+    return result
+}
+
+a counting bloom filter variant
+
+- construct g bloom filters, each may use different properties, such that
+  if all indices in the first bloom are used (tests as true), then go to
+  next bloom filter, rince and repeat until you exhaust the space.
+  
+  each successive bloom filter may tolerate higher chance of false positive
+  since an element is only in the bloom filter if it's in the first one, and
+  so knowing higher counts may not be as important.
+  
+  implementation wise, we may do something very different:
+  
+    * if term x is seen 0 times, no insertion
+    * if term x is seen 1 time, insert into first
+    * if term x is seen 1 < n2 < n3 times, insert into bloom 1 and 2
+    * if term x is seen n2 < n3 < n4 times, insert into bloom 1, 2, and 3
+    .
+    .
+    .
+    * if term x is seen nb-1 < nb times, insert into bloom 1, ..., and b.
+    
+
+  then, to test an input, if it's not in bloom 1, return 0;
+  if it's in bloom 1, and not in bloom 2, return 2
+  if it's in bloom 2, and not in bloom 3, return 3
+  .
+  .
+  .
+  if it's in bloom b-1, and not in bloom b, return b-1
+  if it's in bloom b, return b.
+  
+Building A Better Bloom Filter 
+
+====================
+Spectral Bloom filters (multiset)
+Can be used for word frequencies; no example of its usage in the encrypted
+searching literature.
+
+Word frequencies are important for relevancy measures. The frequencies can
+represent a range, instead of an exact value, to reduce information leakage and
+space complexity.
+
+Classical (set)
+Space-Code Bloom Filter (multiset)
+Space-Code Bloom Filter for Efficient Per-Flow Traffic Measurement
+
+
+
+
+
+
+==================================
+Suppose the user is interested in a keyword search query, where he is only
+interested in the presence, or lack thereof, of certain keywords.
+
+Consider that the user is interested in the following keywords:
+
+    "alex hello world"
+	
+One thing we can do is just do a simple count: does it have 1, 2, or 3 of the
+keywords? A slightly more advanced thing we can do is to do an approximate
+total count of said keywords. Since this count can only exist at the granularity
+of the smallest block size, if we have N blocks, the highest possible count
+is 3*N, all three keywords are in all N blocks.
+
+keyword_matching_count(keywords, message) ->
+    freq = 0
+    for keyword in keywords:
+        freq += get_block_num_containing(message, keyword)
+
+    return freq
+
+However, this doesn't take into account how much importance should be given to
+a keyword. After all, searching for a common keyword, like "car", probably
+shouldn't be given as much weight as searching for a less common keyword, like
+"utilitarian".
+
+So, let the user provide a weight (of importance) for each keyword if desired.
+Then, we have:
+
+keyword_matching_weighted(keywords, msg, weight) ->
+    weighted_freq = 0
+    for keyword in keywords:
+        freq += weight(keyword) * get_block_num_containing(msg, keyword)
+
+    return weighted_freq
+    
+By default, weight(keyword) could be 1. However, this is rather uninformed
+default behavior. Why not, instead, weigh a keyword by a measure of how "rare"
+(reciprocal of probabiity) it is? The reasoning is that rare words used in a
+search query are more "relevant". After all, the probability of seeing a rare
+word is less than the probability of seeing a less rare word, so if we see it in
+a query that denotes something important about the word's relevance to the user.
+
+So, let weight(x) = 1 / probability(x)
+
+Probabilities for words can be derived from relevant word frequency data sets,
+or even n-gram data sets (this will be discussed later).
+
+Let's normalize the output from keyword_matching_weighted by dividing by the
+summation of weight(keyword) for each keyword in keywords.
+
+keyword_matching_weight_normalized(keywords, msg, weight) ->
+    normalization = 0
+    for keyword in keywords:
+        normalization += weight(keyword)
+
+    return keyword_matching_weighted(keywords, msg, weight) / normalization
+   
+If weight just assigns weight(keyword) = 1, then it is the same as
+keyword_matching_count.
+
+keyword_matching_count_normalized has a minimum of 0, and a maximum of
+num(keywords) * num(blocks in msg). I'd like for it to instead fall between 0
+and 1, to facilitate fuzzy degree of memberships.
+
+So, to do this, what do we need? We need a *maximum* value for any message of
+M words. The maximum is when a message contains nothing but the keywords, and
+we can determine that this is true. For example, if we had a block size where
+each block was known to only contain a single word, and then we ran
+keyword_matching_weighted on it, then it would return precisely M. So, why not
+just divide a weighted result by M? This means we must know the number of words
+in the message, however. This can be meta-information.
+
+If we are worried about the number of words being a revealing statistic, we
+can instead give an interval range for M, e.g., min_count <= M <= max_count.
+
+So:
+
+keyword_matching_fuzzy(keywords, msg, weight) ->
+    K = keyword_matching_weight(keywords, msg, weight)
+    min_degree = K / min_words(msg)
+    max_degree = K / max_words(msg)
+    return min_degree, max_degree
+
+The fuzzy return value can be compared with the fuzzy return values of the
+same query on other messages such that the user can compare their respective
+degrees of membership.
+
+=======================================
+mix of large and small real documents (2219) 
+false positive rate on individual terms: 0.001 (approximately)
+no stemming; no stopwords
+1 secret
+bsib, psib block size: 250, max blocks: 64
+psif: max frequency: 1024
+psip: offset radius: 0
+size of real corpus: 84767419
+
+note: disk compression (fast, automatic) can be used to reduce size
+of secure indexes on disk (especially since some of the representations
+use sparse binary vectors). we are more worried about size of secure
+indexes in memory. being required to load a secure index from disk
+to service query requests will be orders of magnitude slower than
+if you can keep all of the secure indexes memory-resident.
+
+in-memory representation could be significantly reduced for many indexes
+by using a symbol compressor, like huffman. however, for speed reasons,
+we wanted a representation in which things like frequency counts used a
+constant width for quick random access. it seems to have paid off.
+
+note that for psip, i cheated a little: i do use variable integer encoding
+on disk, but i could do much better by using a bit vector and only encoding
+index offsets (or, more efficiently, gaps). for issues related to time,
+i didn't do this, but i imagine if i had it would approach the efficiency
+(space-wise) of psib/bsib.
+
+notes: all but psim and psip are larger.
+
+plainly, psim is slower than the others. this makes sense: i am finding
+minimum pair-wise distances (and i am constructing two perfect hashes instead of
+one, but this is minimal time). i could greatly reduce the size, also,
+by allowing a signficantly higher false probability on the member pairs.
+this makes sense in that the first perfect hash, on the actual members, already
+verifies that both are either members or not. the next check on the pairs
+is just to ensure that the pair represents an actual min pairwise distance.
+however, a higher error rate on this would be acceptable, probably, in that
+it wouldn't efffect scoring very much.
+
+label bsib
+------------------------------------
+        index size: 79202088 (~equivalent to memory)
+          lag (ms): 115315
+           indexed: 2219
+               avg: 51.9671
+              path: test\bsib
+label psib
+------------------------------------
+        index size: 79201164 (~equivalent to memory)
+          lag (ms): 122522
+           indexed: 2219
+               avg: 55.215
+              path: test\psib
+label psif
+------------------------------------
+        index size: 27262985 (~equivalent to memory)
+          lag (ms): 111633
+           indexed: 2219
+               avg: 50.3078
+              path: test\psif
+label psim
+------------------------------------
+        index size: 190271154 (~equivalent to memory)
+          lag (ms): 982757
+           indexed: 2219
+               avg: 442.883
+              path: test\psim
+label psip
+------------------------------------
+        index size: 104039561 (~equivalent to memory)
+          lag (ms): 131289
+           indexed: 2219
+               avg: 59.1658
+              path: test\psip
+===============================
+	- auto-tune hash functions by doing some sort of hill climbing algorithm
+	to search through parameter space of some basic hash functions and other
+	bloom filter properties
+		- possible paramters:
+			* number of hash functions
+			* types of hash functions
+			* for a given hash function, vary parameters for it
+				- prime coefficient, seed prime, etc.
+		- i implemented a basic strategy for this where i constructed a variable
+		number of hash functions, and varied the prime coefficient and
+		seed prime for a single type of hash function, then constructed the
+		bloom filter based on these parameters and the given bloom filter members.
+		i then performed trial runs where i counted the number of false positives on
+		an exhaustive or random sample of the message space. i did this for N
+		different exhaustive or random parameter configurations and chose the one
+		that performed the best
+			- NOTE: this sort of autotuning is expensive, and there are definitely
+			better ways to converge to ideal solutions
+				- i think the best approach would be to implement a genetic
+				algorithm -- i'm doing it completely randomly instead of selecting
+				the best from an (initially random) population and slightly varying
+				them to produce "offspring", rince and repeat
+					- this would have much faster convergence if done right
+
+			- NOTE #2: if the set members change, then at some point the bloom
+			filter's hash functions could become poor (far from optimal). so,
+			depending on how frequently these changes occur, the frequency of
+			autotuning may need to vary (since autotuning incurs an execution
+			cost)
+			
+			- typically, for the problems i gave it, a single hash function ended
+			up being the best performer, but my sample spaces were probably
+			atypical
+				- i also did a exhaustive tests, but this is not realistic since
+				only a small subset of the messages should be, in practice, tested
+				for membership. that is to say, the distribution of messages from
+				which a test for membership will be performed on is not a uniform
+				distribution -- i should therefore not weigh failures on unlikely
+				messages the same as failures on likely messages
+					
+	- thought: posession of the bloom filter/hash compromises the contents of the plaintext.
+	that is, P[m = m* | hash = hash* and bloom = bloom*] > p[m = m*]. in a perfect system, it would
+	tell us nothing, that is P[m = m* | hash = hash* and bloom = bloom*] = p[m = m*]. but clearly, this
+	defeats the purpose of being able to search the document.
+
+		we want them to be able to easily determine if there are aproximate substrings matches.
+		the question is, from this, how difficult is it for someone recreate the entire message
+		without knowing anything about the contents of the message other than being able to inspect
+		and query a bloom filter. by constructing a large set of substrings, it seems possible
+		to re-create a lot of the messages content. this is much easier than, say,
+		exhaustively exploring a large key space to try to determine which of the decodings are
+		reasonable.
+		
+
+		
+
+
+======================================
+array permute(n)
+{
+    array result
+    for i <- 0 to n-1
+        j = uniform(i)
+        result[i] = result[j]
+        result[j] = i
+    }
+    
+    return result
+}
+
+
+
+
+
+a counting bloom filter variant
+
+- construct g bloom filters, each may use different properties, such that
+  if all indices in the first bloom are used (tests as true), then go to
+  next bloom filter, rince and repeat until you exhaust the space.
+  
+  each successive bloom filter may tolerate higher chance of false positive
+  since an element is only in the bloom filter if it's in the first one, and
+  so knowing higher counts may not be as important.
+  
+  implementation wise, we may do something very different:
+  
+    * if term x is seen 0 times, no insertion
+    * if term x is seen 1 time, insert into first
+    * if term x is seen 1 < n2 < n3 times, insert into bloom 1 and 2
+    * if term x is seen n2 < n3 < n4 times, insert into bloom 1, 2, and 3
+    .
+    .
+    .
+    * if term x is seen nb-1 < nb times, insert into bloom 1, ..., and b.
+    
+
+  then, to test an input, if it's not in bloom 1, return 0;
+  if it's in bloom 1, and not in bloom 2, return 2
+  if it's in bloom 2, and not in bloom 3, return 3
+  .
+  .
+  .
+  if it's in bloom b-1, and not in bloom b, return b-1
+  if it's in bloom b, return b.
+  
+Building A Better Bloom Filter 
+ 
+ 
+ 
+============================
+most existing techniques don't work well with encrypted search
+
+(1) can't use cloud storage provider to index document store; it's not trusted
+(2) since document store can be quite large, if a central index is used, this
+must still be a secure index, and so the user must modify this central secure
+index to, for instance, include a new document.
+2a) what if user doesn't have access to every doc in the document
+store? i.e., tiered security or decentralized security
+(3) seems more reasonable to have each secure index be a
+separate file (or attached to its encrypted doc). user must construct secure
+index, but only needs to construct index for that particular doc.
+(4) searching, then, is separately (independently) probing each secure index
+that user has permissions for (secure index secured by a public key, so to
+access must have private key) and doing IR on those.
+
+term proximity weighted search
+------------------------------
+
+proximity_factor(d, query)
+    terms <- get_terms(query)
+    doc_terms <- terms in d
+    min_interval_size <- min(MAX, num(blocks(d) - 1)
+    
+    for i <- 1 to num(blocks(d))
+        ts <- doc_terms
+        j <- i
+        while ts is not empty and j <= min_interval_size
+            for t in ts
+                if t in block(d, j)
+                    remove(t, ts)
+            j <- j + 1
+        
+        min_interval_size <- min(min_interval_size, j - i)
+        
+    if min_interval_size > MAX
+        return 0
+    
+    return f(min_interval_size)
+    ; note: f is a function that maps an integer to [0, 1], like:
+    ;
+    ;           alpha^min_interval_size
+    ;
+    ;       where alpha is a constant s.t. 0 < alpha < 1
+    
+    
+; naive; in implementation, make a table and do this for every query term
+; against doc store thus constructing a document matrix on the fly, or offline
+; if security model is relaxed
+tf(d, term)
+    term_count <- 0
+    for each b in blocks(d)
+        if contains(b, term)
+            term_count <- term_count + 1
+        
+    return term_count
+    
+df(D, term)
+    doc_count <- 0
+    
+    for each d in D
+        for each b in blocks(d)
+            if contains(b, term)
+                doc_count <- doc_count + 1
+                break
+    
+    for each t in d_terms
+        score <- score + tf(t, d) * idf(t, D)
+   
+
+score(d, D, query)
+doc_terms <- terms in d
+
+
+    score
+    return proximity_factor(min_interval_size) * term_score(d, query)
+    
+====
+Hello, I'm looking forward to seeing you Friday.
+
+I've been working hard on ideas/approaches for the problem. And, here is how I
+define the problem:
+
+(1) Basic components are n-grams. To allow for better approximate matches for a
+search query (which is a k-gram, e.g., "hello" is a 1-gram search query, and
+"hello world" is a 2-gram search query -- we call such queries k-queries), the
+bloomified message can exactly match search queries up to k-grams.
+
+So, for an n-query, we try to find an optimal partition of the query terms such
+that the largest partition is <= k and the smallest is >= 1. An optimal
+partition is one whose distance measure from the message M is at a minimum.
+
+For k > c, where c is reasonable small, finding an optimal match is probably not
+tractable. The number of partitions is a bell number, where an n-query's
+tightest bound found yet is ((0.792*n)/(ln(n+1)))^n,n=10, which asymptotically
+grows faster than the exponential function If n = 10, ways to partition =
+154508. And, moreover, it will be hard (if not impossible) looking at nodes
+that have already been visited. And, furthermore, we will be trying,
+optionally, variations (permutations, 1-edit errors) of each set of sets. This
+cannot be exhaustively explored for any reasonably large query.
+
+So, we have to settle on an approximately optimal match using greedy algorithms
+and/or randomized algorithms. Basically, I make a logical graph out of this
+problem and explore it using greedy graph search algorithms (or a hill climbing
+algorithm).
+
+I'm still very much generating new ideas, throwing out old ideas, coming up with
+algorithms/approaches to solving them (not in detail, but just a sketch), etc.,
+so I don't have a polished document to give to you yet. I'll send you something
+by tomorrow night even if I am still generating new ideas/revising.
+
+Another thing I'm doing:
+
+When training the bloom filters, I'm devising the best way to train them.
+
+What's that mean?
+
+    (1) What sort of negative examples should I use. Note: I don't need positive
+examples, except to insert them into the bloom filter one time. I've worked out
+the formal math to show interesting perspectives on this and how to go about
+training it.
+
+    The big point here, though, is that I should only train it on negative
+examples which are probable. That is, for a bloom filter with k-grams as
+members, only train it on probable k-grams. So, sample from a distribution of
+k-grams, weighted by probability of seeing that k-gram, and minimize false
+positives on that sampling. If the bloom filter incorrectly says some random
+sequence of characters is a member, that won't harm the probability of a false
+positive nearly as much.
+
+
+
+=================
+If the ability to count multiplicities is desired, this is easily accomplished by using the minimum perfect hash to index into another vector consisting of r bits per element, which can represent 2^r discrete values. For example, for r = 2, four unique values can be represented. Thus, if it is desired to track the multiplies of terms in an encrypted document, these four discrete values can either map to direct frequency counts from 1 to 4, or they can map to four ordinal values, e.g., {“only one”, “between two and four”, “between five and ten”, “more than ten”}. 
+There are, however, some disadvantages with respect to the Bloom filter index.
+First, the Bloom filter may leak less information in some respects since there is no possibility of collisions between members in a MAS. Each member, however, does collide with 2^m-1 non-members, where m is the number of bits allocated to represent each member and m is determined by the desired false probability rate, e=1/2^m .=
+=================
+	for test data:		
+		
+			1 permutes can be done exhaustively. If N unique words, O(N)
+			2 permutes probably exhaustively also
+			
+				- if training data has N unique words, permutations of 2, O(N^2)
+				
+			3 permutes... look into 3grams (ngrams). why?
+			
+				- only issue tests from probable 3grams to bloom filter. we know bloom filter
+				correctly matches true positives, tests need to see if it doesn't have too many
+				false positives.
+				
+					* sample from a large 3gram distribution (frequeny counts for each 3gram
+					are provided -- just make a cdf from it the pdf distribution and quickly
+					sample from it)
+						- this way, we'll draw probable samples more often and so optimizer will
+						want to reduce error on probable search terms more so than improbable
+						search terms (very likely 3grams may even be drawn multiple times, making
+						false positives on them especially harmful -- which is good)
+						
+						
+						
+						
+						
+---
+
+if use multiple block granularities, then changing a block means we must update every block
+in the hiearchy that is affected by the update. for instance, if we have a super-block for the
+whole document to very quickly determine if a document has most or all words in a search query,
+then any changes calls for changing this super-block. we could just let the superblock become stale
+with respect to newest version and only update it periodically.
+
+also, if we want to be able to give a person access (the entire thing) to a sub-block, then it
+should be encrypted differently than other blocks. the disadvantage with this is, if we have a
+hierarchy of blocks, e.g., the superblock, then we must duplicate the contents N times if we have
+N granularity heirarchies. there is also overhead from extra bloom filters, info about hash
+functions, and info about blocks. this may add inflate size appreciably. the good news is, if we
+are compressing at least the blocks (not the bloom filter data used for rapid querying), then all
+of that redundancy can be effectively eliminated if we compress the data first, then encrypt the
+compressed file.
+
+
+
+
+
+
+---
+
+don't juse output "is a member" or "is not a member" unless it precisely is a member. if it's
+only approximate, then output a fuzzy value [0, 1]. then, can also use fuzzy operators, like very,
+to work with them... e.g., very(match(doc, search_terms)) >= 0.5
+
+if v^2 = 1/2 -> v = 1/sqrt(2) ~ .7. this facilitates querying an entire filesystem. first do a
+course-grained search, only include docs with a fuzzy value >= 0.9, then do a finer grained search
+rince and repeat until narrow down on only a few encrypted documents.
+
+at a course level, we can be dealing with something like a subdirectory under a multi-level
+directory structure. then the first question is, does this directory have a match? if so, then
+the next question is, which files in the root directory and subdirectories under the root
+directory have a match? add the files in the root to a list. now do the same thing for each sub-
+directory that we did for the root. do this until we have a set of files. now we do an operation
+similiar to the one we did on the directory structure.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---
+
+subset constrain

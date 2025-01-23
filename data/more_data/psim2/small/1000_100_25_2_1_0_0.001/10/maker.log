@@ -1,0 +1,40 @@
+label 
+corpus_size 769643
+false_positive_rate 0.001
+location_uncertainty 25
+junk_fraction 0
+freq_error 0
+stemming 0
+stop_words 0
+secrets 1
+	secret
+canonical
+	 index_size	542617
+	 build_time	4583
+	    indexed	1000
+	       path	small\1000_100_25_2_1_0_0.001\10\corpus_indexed\canonical
+	  load_time	391
+psib
+	 index_size	375031
+	 build_time	5443
+	    indexed	1000
+	       path	small\1000_100_25_2_1_0_0.001\10\corpus_indexed\psib
+	  load_time	306
+psip
+	 index_size	628129
+	 build_time	8140
+	    indexed	1000
+	       path	small\1000_100_25_2_1_0_0.001\10\corpus_indexed\psip
+	  load_time	357
+bsib
+	 index_size	640520
+	 build_time	8518
+	    indexed	1000
+	       path	small\1000_100_25_2_1_0_0.001\10\corpus_indexed\bsib
+	  load_time	351
+psim
+	 index_size	1243676
+	 build_time	14807
+	    indexed	1000
+	       path	small\1000_100_25_2_1_0_0.001\10\corpus_indexed\psim
+	  load_time	308

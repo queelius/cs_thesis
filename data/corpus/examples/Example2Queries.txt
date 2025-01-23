@@ -1,0 +1,35 @@
+Note: psip -- what about a term being assigned the same place (randomly) multiple times?
+		*** same for bsib, psib
+
+Test 1: query term
+
+	example				-> example2
+	term				-> "tom"
+	stemming			-> false
+	stop words			-> none
+
+	ii (exact)
+			locations	-> 0, 44, 49
+			frequency	-> 3
+			contains	-> true
+
+	bsib (block size=4)
+			locations	-> 0, 11, 12
+			frequency	-> 3
+			contains	-> true
+
+	psib (block size=4)
+			locations	-> 0, 11, 12
+			frequency	-> 3
+			contains	-> true
+
+	psip (range=0)
+			locations	-> 0, 44, 49
+			frequency	-> 3
+			contains	-> true
+
+	psif
+			locations	-> na
+			frequency	-> 3
+			contains	-> true
+

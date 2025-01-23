@@ -1,0 +1,9 @@
+false_positive_rate 0.001
+block_size 256
+max_blocks 10000
+bsib
+	 index_size	7733512
+	 build_time	14061
+	    indexed	100
+	       path	set1\100_15100_256_2_1_0_0.001\1\corpus_indexed\bsib
+	  load_time	626

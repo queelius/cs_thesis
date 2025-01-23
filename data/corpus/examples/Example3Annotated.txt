@@ -1,0 +1,54 @@
+This represents an interesting case for PsiPost, if a query term is:
+
+	"this is phrase one this is phrase two"
+
+0    1  2      3
+this is phrase one
+4    5  6      7
+this is phrase two
+8    9  10     11
+this is phrase one
+12   13 14     15
+this is phrase two
+16   17 18     19
+this is phrase one
+20   21 22     23
+this is phrase two
+
+no order in the hidden query term is given -- indeed, the order in the secure index is scrambled also, within some
+range, so even if the hidden query term was ordered (which would leak information), this information still may
+not be used.
+
+all we have are a set of bigrams and/or unigrams, and the objective is to find whether there exists all of them within
+some range -- the longest-possible range for any particular phrase of size k, with a random scrambling of radius r, is:
+
+	the first term in the phrase in the document is moved r units left by the secure index, and
+	the last term in the phrase is moved r units right. then, the span of the terms in a phrase of k units is:
+
+		k + 2r
+
+	thus, if all of the bigrams of a query term match such that if the lowest term has position j and the highest
+	term has position i, then there is true match if |j - i| <= k + 2r
+
+	the smallest-possible range, likewise, is when the first term is moved r units right, and the last term is moved
+	r units left in a way that they have a span of zero if k <= 2r. if k > 2r, then:
+
+		minimum span is: k - 2r. since r will tend to be large compared to k, to prevent information leakage, the
+		unfortunate reality is that minimum span information may not be used much to weed out false positives.
+
+in the above case, "this is phrase one this is phrase two this is phrase three" matches:
+
+	[0, 7]		-> this makes sense, it is an exact match
+	[1, 7]		-> false match -- but contains bigrams: is phrase, phrase one, one this, this is, is phrase, phrase two
+					the problem is, there are ways to address this, but i leave that to future work.
+	[2, 9]
+	[5, 12]
+	[6, 12]
+	[6, 13]
+	[8, 15]		-> this makes sense, it is an exact match
+	[9, 15]
+	.
+	.
+	.
+	[17, 23]	-> this makes sense, it is an exact match
+	[18, 23]

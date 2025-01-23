@@ -1,0 +1,11 @@
+false_positive_rate 0.000976563
+load_factor 0.6
+max_blocks 64
+block_size 256
+algo 0
+psib
+	 index_size	26529088
+	 build_time	34273
+	    indexed	1000
+	       path	junkfreq4\1000_4000_256_1_1_0_0.001\1\corpus_indexed\psib
+	  load_time	280

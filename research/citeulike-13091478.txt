@@ -1,0 +1,6 @@
+                                       References
+[1] M. Naor and M. Yung, “Universal One-Way hash functions and their cryptographic
+    applications,” pp. 33–43, 1989. [Online]. Available:
+    http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.26.5189
+
+

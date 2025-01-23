@@ -1,0 +1,28 @@
+local co-occurrence statistics
+    * use a sliding window (of blocks) to find a solution that maximizes
+    distance measure.
+    
+    * words that occur together (within some sliding window) probably share
+    a similar context and have similar meanins
+    
+    * example: check +-k blocks for the terms of a search query (this is
+    locality measure).
+        - prefer to match large n-grams (or rearrangements of said n-grams)
+        within this window.
+        
+        - instead of considering a message's total of N blocks at a time, we
+        only entertain k < N blocks (constant) at a time, doing a single pass
+        through all the block windows. so, proportional to k *
+        (number of windows) ~ kN
+        
+            * start with a small window, do the pass
+                - get a distance measure for it
+                    * for each block, match as many of the keywords as
+                    possible
+            
+            * increase the size of the window, k' = k + c
+                - is it better or worse?
+                
+                
+                
+WordNet has been studied to expand queries with conceptually-related words

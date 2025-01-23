@@ -1,0 +1,11 @@
+false_positive_rate 0.000976563
+load_factor 1
+max_blocks 64
+block_size 25
+algo 0
+psib
+	 index_size	389070
+	 build_time	5682
+	    indexed	999
+	       path	small\1000_100_25_7_1_0_0.001\3\corpus_indexed\psib
+	  load_time	311

@@ -1,0 +1,45 @@
+min_query_terms 1
+max_query_terms 1
+min_term_tokens 1
+max_term_tokens 1
+obfuscations 0
+mindist
+label bsib
+	avg_query_lag_time -1
+	map -1
+label psib
+	avg_query_lag_time -1
+	map -1
+label psip
+	avg_query_lag_time -1
+	map -1
+bm25
+label bsib
+	avg_query_lag_time 0.0211533
+	map 0.837197
+label psib
+	avg_query_lag_time 0.0120467
+	map 0.834687
+label psif
+	avg_query_lag_time 0.0118133
+	map 0.928683
+label psip
+	avg_query_lag_time 0.01187
+	map 0.932265
+recall_precision
+label bsib
+	avg_query_lag_time 0.0111167
+	avg_precision 0.995988
+	avg_recall 1
+label psib
+	avg_query_lag_time 0.00635
+	avg_precision 0.99599
+	avg_recall 1
+label psif
+	avg_query_lag_time 0.00634333
+	avg_precision 0.996074
+	avg_recall 0.999864
+label psip
+	avg_query_lag_time 0.00637667
+	avg_precision 0.995036
+	avg_recall 0.999832

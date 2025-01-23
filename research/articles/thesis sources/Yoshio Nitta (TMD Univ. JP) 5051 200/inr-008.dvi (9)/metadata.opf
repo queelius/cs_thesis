@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='utf-8'?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+        <dc:identifier opf:scheme="calibre" id="calibre_id">9</dc:identifier>
+        <dc:identifier opf:scheme="uuid" id="uuid_id">b374fd6f-cc97-432c-aeea-3d0271ba9f06</dc:identifier>
+        <dc:title>inr-008.dvi</dc:title>
+        <dc:creator opf:file-as="19:56:25, Yoshio Nitta 5051 2004 Feb 18" opf:role="aut">Yoshio Nitta (TMD Univ. JP) 5051 2004 Feb 18 19:56:25</dc:creator>
+        <dc:contributor opf:file-as="calibre" opf:role="bkp">calibre (1.24.0) [http://calibre-ebook.com]</dc:contributor>
+        <dc:date>0101-01-01T00:00:00+00:00</dc:date>
+        <dc:language>en</dc:language>
+        <dc:subject>TeX output 2008.12.05:1752</dc:subject>
+        <meta content="{&quot;Yoshio Nitta (TMD Univ. JP) 5051 2004 Feb 18 19:56:25&quot;: &quot;&quot;}" name="calibre:author_link_map"/>
+        <meta content="2014-02-23T00:42:25.536000+00:00" name="calibre:timestamp"/>
+        <meta content="inr-008.dvi" name="calibre:title_sort"/>
+    </metadata>
+    <guide>
+        <reference href="cover.jpg" title="Cover" type="cover"/>
+    </guide>
+</package>

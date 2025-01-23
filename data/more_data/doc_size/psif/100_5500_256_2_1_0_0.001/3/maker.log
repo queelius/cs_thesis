@@ -1,0 +1,22 @@
+label 
+corpus_size 4127586
+false_positive_rate 0.001
+location_uncertainty 256
+junk_fraction 0
+freq_error 0
+stemming 0
+stop_words 0
+secrets 1
+	secret
+canonical
+	 index_size	2648366
+	 build_time	771
+	    indexed	100
+	       path	psif\100_5500_256_2_1_0_0.001\3\corpus_indexed\canonical
+	  load_time	275
+psif
+	 index_size	1114610
+	 build_time	3361
+	    indexed	100
+	       path	psif\100_5500_256_2_1_0_0.001\3\corpus_indexed\psif
+	  load_time	28

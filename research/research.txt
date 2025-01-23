@@ -1,0 +1,551 @@
+new notes:
+
+    * i use word n-grams -- in this particular case, just 1 and 2-grams,
+      but the index doesn't care what you store. i store 1-2 grams so that
+      i can do both keyword searching and phrase searching, e.g., if a user
+      searches for "one two three four" the check for presence of following
+      bigrams:
+      
+        "one two", "two three", "three four"
+        
+        clearly, this can result in a false positive if those 3 bigrams
+        appear (in a single block, in the case of bsib and psib). the larger
+        the phrase, the less likely a false positive.
+        
+        note: this is a different false positive than the fp rate of the
+        index on actual entries, e.g., the string "one two", if it's not
+        actually a member, may still test as positive.
+        
+    * i could also use letter n-grams, e.g., instead of storing whole words,
+      store partial words. consider the string "hello world":
+      
+      if storing 3-letter grams, then make these members, where * is white
+      any whitespace.
+      
+        "hel", "ell", "llo", "lo*", "o*w", "*wo", "wor", "orl", "rld"
+        
+      there are more members, true, but it would allow for partial matching.
+      
+      so, first, replicating the previous function: searching for "hello"
+      would just look for "hel", "ell", "llo". again, false positives are
+      possible.
+      
+      what about partial matches? well, you can now estimate the type distance
+      error, e.g., if "hel" and "ell" exists, but not "llo", what's this say?
+      
+      something like "hell" or "hellp" may exist. i grant you that this may
+      introduce too much possibility for false positives. i guess it depends
+      on your needs.
+      
+      we could go in the other direction, also, e.g., we could store
+      word trigrams or larger. this is a trade-off between space and time. if
+      3-gram or larger phrase queries are common, then it may be useful to store
+      3-grams directly. then, searching for "one two three four" amounts to:
+      
+        "one two three", "two three four"
+        
+        this was only checking for the presence of two strings instead of
+        four in the bigram case. this also has a lower probability of a false
+        positive match. you still need to include unigrams if you wish to
+        allow keyword searching, and this can also allow for, with a high
+        probability of false positives, bigram search queries. if you want
+        accurate bigram queries, you may also want to include bigrams.
+        
+        the good news is, this is not a huge increase in the index size. it's
+        only ~1.5 times larger than the unigram+bigram. maybe less, depending
+        on how the index scales with size of membership.
+    
+
+
+
+
+
+
+
+=============================
+DSA
+OpenPGP: http://www.gnupg.org/gph/en/manual.html
+
+- confidentiality: who should have access to which parts of the doc
+    encryption - using Kerckhoff's principle, i.e., for doc to remain
+    confidential, only key needs to remain secret.
+    
+    - use public keys to, for each authorized user, encrypt the symmetric
+    key for them
+
+- authorization: what permissions does a user have for working with the doc
+    
+- accountability: what has a user done with the doc
+- integrity: how do you know if the doc has been altered? (signature)
+    - compute a hash value using a one-way hash for message (or m')
+- authenticity: how do you know where the doc came from? (signature)
+- non-repudiation: can the signatory deny having signed the doc? (signature)
+
+*** persistent version control, outside of an svn type versioning system?
+    ... since it's a distributed sort of editing thing?
+        - patches, so start with, say, an empty block. then, first edit
+        is a patch expressing difference. in this case, it's just something like
+        "new stuff here".
+        - next patch is a small explanation about what was done to it to get
+        the new version from the old version
+        ...
+    
+make each hash function secure:
+    * for an output, should not be able to determine its input
+
+
+command line tools:
+    * authorize based on private key
+        - allows you to access any block section you have been "given" a
+        symmetric key for (secured by encrypting it with  your public key for
+        which only your private key can open)
+    * or: authorize a block section based on symmetric key for given block
+    
+you have a separate public key db for public keys you trust, and to, say,
+add someone to a block, you must have their public key, then you must encrypt
+the symmetric key (which, if you can't remember, you can just ask the bloom
+what the symmetric key for that block is since the bloom has stored that
+block's symmetric key for you in that block since you are an editor of it).
+    -actually, you only need to say "add this public key to the block" and
+    it'll take care of the rest since you have the symmetric key encrypted with
+    your public key already and it'll decrypt it then reencrypt it with that
+    person's public key so he can later access it with his private key
+    
+    
+- if using recognized microformats to transform document tokens (e.g., don't
+include private words, strip out some words, change some words, don't correct
+spelling some words, etc.), there is a command to send block to pretty format
+in which microformats (for bloom's uses) are stripped out. however, be careful
+with this sense if you edit it then try to add it later, microformats are GONE!
+this is for a final sort of publishing thing, not while editing or storing for
+other people's use.
+
+if you don't care about revealing bags of words -> use a normal set,
+not a hash
+
+if you don't care about revealing bags of k-grams but do care
+about revaling n-grams, n > k, then combinations. normal set for
+bag of words -- this has other uses and doesn't reveal too much
+about it. bloom filter / hash for n-grams.
+
+maybe have a bag of words for entire document? this may be difficult to
+keep up to date, however. if as the bloom is going around people make
+edits to various blocks, when can they remove a word from the overall
+set? they can't remove a word from the bag simply because they removed
+all occurrences of said word to their block, because it may be in another
+block.
+
+well, all of this complexity, and still someone can directly modify a
+bloom filter. sure, it can be signed by a user's private key, and if
+you trust that person, maybe it's ok to trust that the bloom filters etc
+have not been directly modified ... certainly you can believe that between
+you and your friend, but what about before friend signed it? another person
+signed it? a web of trust, then?
+
+
+if you want multiple block granularities, use multiple logical files.
+true, they will get out of sync. solution: someone with master private
+key can merge apply a merge operation.
+
+also, merge for distributed editing of document. how do we handle this?
+
+
+train bloom filters TO have certain false positive probability to
+stymy reconstruction efforts?
+
+// also make a separate symmetric key for being able to access a bloom filter
++
+
+protocol buffers
+
+message Bloom
+	required string master_key = 1
+	repeat Block blocks = 2
+
+message Block
+	required uint id = 1
+    required repeat Signature = 2
+	uint offset = 3
+	uint size = 4
+	required repeat string expr = 5
+	required bytes raw_content = 6
+    repeated BloomFilter filters = 7    
+    
+message Signature
+    required string public_key = 1
+    required string hash = 2
+	required string master_key = 1
+	
+message HashFunction
+	string serialization
+	
+
+
+message BloomFilter
+	uint block_id = 1
+	required uint size = 2
+	repeated bool values = 3
+    repeated HashFunction = 4
+
+when you add/remove/modify a block, you must determine which
+bloom filters it affected and retrain them!
+
+	-- this complicates things. to retrain, need access to words
+		in affected blocks. if have access to those words,
+		then lacks security. may as well use a bag of words
+		to model each block (thus revealing which words are
+		in there)
+
+
+	
+{ sign(encrypt(gzip(block))) }
+
+use python?
+
+make it a webservice also?
+
+if want to allow granular access to document, here's how:
+
+	encrypt blocks, your call what size per block, wrap it with some meta-data which explains
+	its boundaries in the message. it doesn't need to be disjoint, overlapping parts
+	are ok. then zip entire thing. so, to get a certain part of the document because
+	your fuzzy search/visualizer directed you to it, unzip entire thing, then search for
+	a block with the desired boundary. get multiple blocks if needed. then, if you have
+	private key for these encrypted blocks, go ahead and unencrypt them.
+	
+	what if you do this, edit a block, then want to reencode it? hmmm. if blocks in set
+	are not disjoint, this is a problem!
+	
+		--- so, maybe require them to be disjoint
+		
+	if they are disjoint, then just replace the old encrypted block with your encrypted block,
+	and then have some command like "bloom_insert "new block with old meta-data for it", which
+	will tell us how to update boundaries of other blocks. then, retrain them bloom filters that
+	were assigned to the old block range. remove old block, then append new block.
+
+	bloom_get -signed public_key -key password -block id1 id2 id3 data
+	
+	
+	bloom_replace data block_id
+		-> get block_id's offset and size
+		-> bloom_remove block_id
+		-> wrap data with old offset, but new block size for input data
+		-> bloom_insert data block_id
+		
+		-> will look at existing block's meta-information to update the offsets of all blocks
+		that come after it: block[i].offset += (block[new].size - block[old].size)
+		-> will remove old bloom filters and train new ones for it
+		-> will append zip block and add it to bloomy file (order doesn't matter, although
+		for quick access there will be an offset + size table (in bytes, not words as the block
+		meta-data is about)
+		
+	bloom_remove -key password block_id
+		-> will remove block with block_id
+		-> for each block logically after block_id, decrement its offset by block_id's size
+	
+	bloom_insert data block_id
+		-> will 
+	
+
+make bloomy a self-contained structure; the only thing you need
+is:
+    (1) a query tool (which can parse the unencrypted bloomy structure)
+	(2) agnostic towards the particular encryption algorithm used;
+		(a) it can work like so, as command-line tools, far from finalized because the thought just occurred to me to handle it this way):
+			(1) get plaintext of a document you want to represent
+			(2) bloom_make -arg1 -arg2 ... -argk < plaintext > bloomy
+				-- bloom_make is just a command line tool; it will have a lot of optional arguments
+				-- uses I/O redirection facilities of operating system, e.g., pipes
+				-- the input is the document you wish to represent
+				-- the output is representation of document using bloom filters
+				another example: bloom_make < cat plaintext1 plaintext2 ... plaintextn > bloomy
+					-- now all those files have a single bloom representation and can be queried as a whole
+				
+			(3) bloom_query 'hello world' bloomy > out
+				-- outputs degree of membership between 0 ... 1
+					-- if no redirection for output is given, will output to standard out
+				-- will have a lot of parameters
+				-- bloom_query 'hello world' *.bloomy
+			(4) bloom_read
+			(4) bloom_compare(x, another file) -> measure of how alike
+			(5) bloom_keyword_query(x, "keywords...") -> degree of membership
+			(4) bloom_visualize(x, "hello world") -> visualization of how much it matches and where
+				-- will have a lot of parameters
+			(5) doc = encrypt and/or compress (or do nothing to it at all) document with a separate tool
+				-- nothing to do with bloomy
+			(6) bloom_join(x, doc) -> outputs a union of bloomy and document
+				-- this just wraps the document so you don't need to send the bloomy and the document as two separate files
+			(7) bloom_unjoin(x, doc) -> two seperate outputs, the bloomy and document
+			(8) 
+			
+
+in general, two types of preprocessing transformations to messages:
+
+(1) public transformations (regular expression)
+	these transformations follow along with the bloomified message,
+	e.g., stop words, definition of a word, etc.
+(2) private transformations (regular expression)
+	these transformations are forgotten, e.g., private words (words
+	of a message which cannot be searched for) can simply be
+	forgotten.
+		this complicates reencoding though: e.g., a person
+		modifies a block (with permission), and when it comes
+		time to update the block, the private transformations
+		are not reapplied.
+
+to address this:
+	include, optionally, transformation instructions embedded
+	in the message.
+
+	*** microformats
+
+		-- preprocessing engine defaults to this mode?
+
+	*** custom regular expressions, attached to the bloomy,
+	e.g., reg exp: "password ::alphanumeric::+
+    
+    
+    
+============================================
+    
+- what sort of distance measures make sense?
+
+- in what way is the query "distant" to the document? possible ways:
+    * we want an exact match. approximately:
+        - how "much" must the query be re-arranged for the ordering to be
+            the same in both?
+            * at n-gram granularity, we know exactly how much for that sub-query part
+            * at block granularity, we assuem the worst-case, e.g., if counting
+                inversions, then 
+            * we can combine n-gram granularity and block granularity together in
+                sophisticated ways (blows up the search space though)
+        - how many word-spaces (gaps) must be inserted to line up the terms
+    
+lexographic ordering
+    - first, fix probable typos (use same fix for document and queries
+        * word_typos['bey'] -> 'bye'
+
+    - apply stemming to each 1-gram?
+        - maybe even pre-hash (like words hash to same value, e.g., soundex),
+        which reduces space even more and provides for more forgiving matches
+        
+    - remove stop words
+        
+    - take all 1,2,...,n-grams of a document, order them lexographically, make
+    them members. (reduces space even more since order doesn't matter)
+        - we don't care about ordering of words; we care about keywords, and
+        the more concentrated the keywords, the better. best case is to exactly
+        match an n-gram search, lexographically ordered.
+                - insert gapped versions: small penalty due to gap (maybe only include
+                one bloom filter, per block, which includes gaps up to size N, and give
+                them all the same penalty cost of N. (distance)    
+    
+    for a query:
+    - do the same preprocessing on query: fix typos, apply stemming?,
+        remove stop words    
+    
+    - apply automatic query expansion if desired by user
+        -> e.g., use synonyms?
+     
+    - use keyword weighting proportional to 1 / p[keyword]. deal with n-grams
+    in some smart way, too, e.g., 3-gram = 1/p[3-gram, any ordering] =
+    1/(p[3-gram order 1] + p[3-gram order 2] + ... + p[3-gram order 6]).
+        * note that 1/p[3-gram, any ordering] is necessarly larger than
+        1/p[any word from the 3-gram]. so, the 1-grams have a larger
+        penalty (due to larger reciprocal of probability).
+        * matching a rare n-gram (improbable) has higher weight (importance)
+        than matching a common n-gram, e.g., "happy" vs "happy alex towell",
+        "happy alex towell" being a lot more rare so a lot more important
+        
+    - find a good (or, if query is small enough, optimal) selection of blocks
+    (according to distance metrics for blocks), return that set of blocks with
+    a goodness of matching score (maybe a degree of membership between 0 and 1)
+    
+        - outlined a distance metric already (maybe two already). another one
+        is like so: for each word, what's the total distance to other words
+        in query in doc?
+        
+            sum of (distance(word[i], word[j]), j != i in matched query words
+            
+            now, word[k] just refers to the words in the match. distance is
+            a function. if word[i] and word[j] exist as part of a k-gram, then
+            say distance is 0. if word[i] and word[j] in same block, then
+            say distance is block size. if word[i] and word[j] in different
+            blocks, then say distance is sum of block sizes between them.
+            
+            this is an O(n^2) operation. fine for almost any query since
+            queries larger than, say, 10 (10^2 = 100) are unlikely, especially
+            after removing stop words and such.
+            
+            what's maximum distance for a match? equally space the words
+            throughout doc, so if doc has 100 words and query is 4, then
+            say 1 word at position 0, then pos 25, then 50, 75, then 100.
+            distance ~ (25 + 50 + 75) + (25 + 50) + 25 = 250. that's the max for
+            a 4-query on a doc with 100 where each query word is in doc.
+            this is our normalization value to make any distance measure
+            fall between 0 and 1.
+            
+            a best match for a k-query is a k-gram match. this may be common.
+            if a k-gram match isn't found, then try something like (k-1)-gram and
+            a 1-gram match, get distant measure between those two grams. so
+            on and so forth.
+            
+            if dealing with submatches, what to do? one thing is just make it
+            so that when finding a distance to a word in the doc and a word not
+            in the doc, make it some large value > size of doc, call it M.
+            
+            let's analyze previous example, matching only 3 words with a worst
+            case.
+            
+                (33 + 67) + 33 = 133, total distance between terms in doc. now,
+                we add to that the distant for each word to the non-existing
+                word, which is M > size of doc away. so, 133 + 3*M. if M = 100,
+                then 133 * 300 = 433 > 250. is this reasonable? seems so.
+                
+                so, the worst-case distance when all queries were in doc was
+                250/433, and the worst case for the 3-query match was 1.
+                
+                best case distance is 0/433 = 0. so, this seems reasonable.
+                just gotta do it algorithmically. this is a way of doing distance
+                measures, but like with other ways, there is no single best
+                way. it depends on the person doing the searching and what
+                he or she needs from it. this is probably why the best approach
+                is one where the user can specify what measure to use, or,
+                as we're doing, let them visualize it where we show things like
+                how many 1-grams were matched in a word, how many of those matches
+                in a block were from 2-grams, 3-gams, etc... and then color code it.
+                we can also help by talking about distance measures between blocks, as
+                already discussed.
+            
+                
+        - another approach doesn't throw away information about which blocks
+        found one or more matches, it uses all of the information. best for
+        visualization purposes.
+    
+    
+principle of locality: driving force
+    - do the stuff above, i.e., lexographic ordering, gaps, etc.
+    - to prevent transformations of tokens that we don't want to happen,
+        during preprocessing step we can indicate, through a microformat
+        embeded in doc (e.g., meta-data about how to tranform words), how
+        we want it to transform some tokens, default behavior otherwise, we're
+        default behavior can also be embededded in doc
+        
+    - now, we have only one distance measure: locality. no permutations, no
+    char transformation errors, just how far apart are they? what's their
+    spread?
+    
+    - for small queries, extremely fast. for large queries, say we actually do
+    include as members 10-grams, then:
+    1-gram queries -> 1 (partition), 2->2, 3->5, 4->15, 5->52, 6->203, 7->877,
+    8->4140, 9->21147, 10->115975. starting to get large. exhaustively explore
+    everything up to size 6 (large queries since some of those queries will
+    include stop words which can be stripped). anything larger and we can
+    do greedy search methods.
+    
+        * note, if submatching (i.e., finding a submatch, with a penalty, that
+        matches -- this can be done even if a whole match is found since the
+        whole match may be "dispersed" all over the place while a submatch may
+        be only dispersed into, say, 1 block.
+            - a lot of these penalties seem adhoc, but the principle of locality
+            is driving force.
+    
+    
+    
+cosine similarity
+    - can be used in teh following way: query transformation match q' cosined
+    with q, value between 0 and 1
+        - but a very high dimensional vector. so, only good by character? e.g.,
+        character sequences of 3 -> 26^3 possibilities. treat as a vector in
+        this space, now can compare different 3 sequence characters (words).
+        can extend this to n-characters, and if a word doesn't have n characters,
+        then they have null characters for remainder, so instead of 26^3 we have
+        27^3 space for a 3-character sequence.
+        
+        let this be another distance measure (especially for edit error distance
+        measures).
+    
+query expansion
+
+    "python C++" => "python C++"
+    "python snake" => ("python" OR "pythons") AND ("snake" OR "snakes")
+        -> "python snake"
+        -> "python snakes"
+        -> "pythons snake"
+        -> "pythons snakes"
+        
+        synonyms, ...
+        stemming: {"fishing", "fished", "fisher"} -> "fish"
+        
+            - only include stems (and n-grams of n stems) as members?
+            - if so, n-gram data sets must be re-made
+            
+---
+* assign high values (keyword weights) to discriminating terms -- because we want
+want to select as few relevant blocks as possible (similiar to wanting to select
+only a few relevant documents in a mult-doc search).
+
+* http://www.soi.city.ac.uk/~ser/papers/RSJ76.pdf (derivation from Sparck Jones)
+    keyword weighting. for a term t:
+        N = # of blocks in doc
+        n = # of blocks t is in
+        
+        w = -log(n/N)= -(log n - log N) = log N - log n
+        
+        ex: if 16 blocks, and 4 blocks have t:
+        
+            w = -log(4/16) = log 16 - log 4 = 4 - 2 = 2
+            
+        ex: if 16 blocks, and 8 blocks have t:
+        
+            w = -log(8/16) = log 16 - log 8 = 4 - 3 = 1
+            
+        ex: if 16 blocks, and 1 blocks have t:
+        
+            w = -log(1/16) = log 16 - log 1 = 4 - 0 = 4
+            
+            
+        ...how relevant is a block? could rate them all.
+            
+            
+                       
+a reason to go back to use of a bloom filter per gram size: permits more
+access levels. e.g., maybe you only want to give someone access to 1, 2-grams
+but not the 3-gram level.
+
+    option 1: make a 1-gram level, a (1,2)-gram level of both, and a (1,2,3)-gram
+    level of all three, and give user access to (1,2)-gram level. a more
+    privledged user has access to (1,2,3)-gram level, a less priviledged user
+    only has access to 1-gram level.
+    
+    option 2: make a 1-gram level, a 2-gram level, and a 3-gram level. give
+    user access to 1-gram level and 2-gram level.
+
+        
+
+key word extraction
+
+
+
+
+
+when generating a bloom filter set for a document (bloom), 
+
+
+
+*** detachable query-able representations of documents? it can be optimized for
+a particular set of needs. in our case, can be made private e.g., bloom
+filters conceal contents. but other parmaters: typo transformations, concept
+searching, synonym transformations, different locality metrics, different
+metrics period, etc. basically, we have a self-contained representation of a
+document (maybe the query interface just wraps the real document if no
+confidentiality is needed).
+
+
+also, my query-stuff doesn't have to work only with my command line utils.
+for instance, they can just generate such a representation from any text,
+even an entire directory of text.
+
+how much smaller can a query-able representation be than the real doc? minus
+stop words, minus a lot of repetitions (in bloom filter case depends on size
+of blocks), etc., may be quite small compared to full-size document.

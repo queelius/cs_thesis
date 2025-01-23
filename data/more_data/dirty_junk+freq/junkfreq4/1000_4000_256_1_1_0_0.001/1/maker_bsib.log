@@ -1,0 +1,9 @@
+false_positive_rate 0.001
+block_size 256
+max_blocks 64
+bsib
+	 index_size	27272272
+	 build_time	53461
+	    indexed	1000
+	       path	junkfreq4\1000_4000_256_1_1_0_0.001\1\corpus_indexed\bsib
+	  load_time	2386

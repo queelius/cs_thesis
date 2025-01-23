@@ -1,0 +1,10 @@
+false_positive_rate 0.000976563
+load_factor 1
+algo 0
+max_min_pair_dst 5000
+psim
+	 index_size	32794982
+	 build_time	709913
+	    indexed	1000
+	       path	large\1000_1000_50_4_1_0_0.001\1\corpus_indexed\psim
+	  load_time	374

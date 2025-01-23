@@ -1,0 +1,48 @@
+Algorithmic information theory by Chaitin
+Causality: Models, Reasoning, and Inference by Pearl
+Information theory by Ash
+Bayesian Artificial Intelligence by Korb, Nicholson
+Decision Theory: Principles and Approaches
+An Introduction to Decision Theory by Peterson 
+The Elements of Statistical Learning: Data Mining, Inference, and Prediction by Hastie, Tibshirani, Friedman
+Approximate dynamic programming: Solving the Curses of Dimensionality by Powell
+Reinforcement Learning by Sutton, Barto
+Probability Theory: The Logic of Science
+Pattern Recognition and Machine Learning by Bishop
+Coding theory by Ling, Xing
+---
+Solomonoff's theory of inductive inference
+Kolmogorov complexity
+Bayesian inference
+Reinforcement learning (approximate dynamic programming in OR)
+Supervised learning (fitting in Stats -- I imagine Stats classes will take care of this)
+Sequential decision theory
+Information theory and algorithmic information theory
+Monte-Carlo methods
+Monte-Carlo tree search (MCTS) 
+
+Cryptography
+Theorem proving
+Probabilistic reasoning
+Computational complexity
+Algorithmic complexity
+Turing machine
+    Inductive turing machine
+
+Cellular automata
+Levin search
+Markov decision process
+Maximum entropy principle
+AIXI
+Probabilistic logic
+Markov logic networks
+Markov chains
+Probabilistic Logic Networks (PLN)
+Logic programming
+Subjective logic
+Fuzzy logic
+Decision theory
+Minimum message length
+Minimum description length
+Upper Confidence Bound 1 (UCB1)
+Upper Confidence Bound 1 applied to trees (UCT)
